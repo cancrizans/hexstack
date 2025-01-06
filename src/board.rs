@@ -4,6 +4,7 @@ use macroquad::prelude::*;
 use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display};
 use lazy_static::lazy_static;
 use ::rand::Rng;
+use memoize::memoize;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Tile(u8);
@@ -113,7 +114,8 @@ impl Tile{
         ].map(|(x,y,z)|Tile::from_xyz(x, y, z))
     }
 
-    pub fn move_neighbours(&self, kind : &Piece) -> Vec<Tile>{
+    #[inline]
+    fn move_neighbours(&self, kind : &Piece) -> Vec<Tile>{
 
         let white_offsets : Vec<Delta> = match kind.species{
             PieceType::Flat => vec![
@@ -164,32 +166,8 @@ impl Tile{
         
     }
 
-    pub fn attack_neighbours(&self, kind : &Piece) -> Vec<Tile>{
-        self.move_neighbours(kind)
-        // match kind.species{
-        //     PieceType::Flat => self.adjacent().into_iter().flatten().collect(),
-        //     PieceType::Lone(tall) | PieceType::Stack(tall) 
-        //     => match tall {
-        //         Tall::Stone => {
-        //             let (x,y,z) = (self.x(), self.y(), self.z());
-        //             match kind.color{
-        //                 Player::White => [
-        //                     (x+1,y-1,z),  (x-1,y,z+1),
-        //                     (x-1,y+1,z), (x,y-1,z+1), (x+1,y,z-1),
-        //                 ],
-        //                 Player::Black => [
-        //                     (x+1,y-1,z), (x,y+1,z-1), (x-1,y,z+1),
-        //                     (x-1,y+1,z),  (x+1,y,z-1),
-        //                 ]
-        //             }.into_iter().flat_map(|(x,y,z)|Tile::from_xyz(x, y, z))
-        //             .collect()
-        //         },
-        //         _ => self.move_neighbours(kind)
-        //     } 
-        //     _ => self.move_neighbours(kind)
-        // }
-        
-    }
+
+    
 
     pub fn to_world(&self, flip_board : bool) -> (f32,f32){
         const SQRT3 : f32 = 1.73205080757;
@@ -236,9 +214,14 @@ impl Tile{
             .flatten()
     }
 
-    pub fn draw_highlight(&self, thickness : f32, color : Color, flip_board : bool){
+    pub fn draw_highlight_outline(&self, thickness : f32, color : Color, flip_board : bool){
         let (x,y) = self.to_world(flip_board);
         draw_hexagon(x, y, 1.0, thickness, true, color, Color::from_rgba(0, 0,0,0));
+    }
+
+    pub fn draw_highlight_fill(&self, color : Color, flip_board : bool){
+        let (x,y) = self.to_world(flip_board);
+        draw_hexagon(x, y, 1.0, 0.0, true,BLACK, color);
     }
 
     pub fn draw_move_target(&self, flip_board : bool){
@@ -317,6 +300,21 @@ impl Tile{
 
     
 }
+
+
+#[memoize]
+pub fn neighbours_move(tile : Tile, piece : Piece) -> Vec<Tile>{
+    tile.move_neighbours(&piece)
+}
+
+#[inline]
+pub fn neighbours_attack(tile : Tile, piece : Piece) -> Vec<Tile>{
+    neighbours_move(tile, piece)
+}
+
+
+
+
 
 #[derive(Clone, Copy)]
 struct Delta{
@@ -399,6 +397,13 @@ impl Player{
             Player::Black => Color::from_hex(0x000000),//Color::from_hex(0x8ec8fd),
             Player::White => Color::from_hex(0xffffff),
         }
+    }
+
+    pub fn ui_info_pos(&self) -> Vec2 {
+        vec2(3.0,5.5) * match self{
+            Player::White => 1.0,
+            Player::Black => -1.0,
+        } + vec2(0.0,0.5)
     }
 }
 

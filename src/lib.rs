@@ -12,8 +12,10 @@ mod board;
 
 pub use board::{Player, Ply, Tile};
 
-use board::{BoardMap, Piece, PieceType, Tall, ZobristHash, BOARD_RADIUS};
-
+use board::{neighbours_attack, neighbours_move, BoardMap, Piece, PieceType, Tall, ZobristHash, BOARD_RADIUS};
+use ::rand::seq::SliceRandom;
+pub mod engine_debug;
+pub mod game;
 
 
 
@@ -137,6 +139,37 @@ impl State{
         State {  to_play: Player::White, pieces, captured:vec![] , zobrist_hash}
     }
 
+    pub fn draw_attacks(&self, flip_board : bool, alpha:f32){
+        self.pieces.iter().for_each(|(t,p)|{
+            neighbours_attack(*t,*p).into_iter()
+            .for_each(|target|{
+                let origin : Vec2 = t.to_world(flip_board).into();
+                
+                let target_cent : Vec2 = target.to_world(flip_board).into();
+                let dir = (target_cent-origin).normalize();
+
+                let start = origin + dir * 0.6;
+                let end = target_cent-dir * 0.6;
+
+                // let orth_disp = vec2(-dir.y,dir.x) * 0.1 * match p.color{
+                //     Player::Black => -1.0,
+                //     Player::White => 1.0,
+                // };
+
+                let mut color = p.color.to_color();
+                color.a = alpha;
+
+                arrows::draw_arrow(
+                    start,// + orth_disp, 
+                    end,// + orth_disp, 
+                    color, 
+                    0.1, 0.2, 0.4,
+
+                )
+            });
+        })
+    }
+
     pub fn draw(&self, 
             piece_tex : Texture2D, 
             font : Font,
@@ -144,36 +177,10 @@ impl State{
             draw_attacks : bool,
             draw_tile_numbers : bool,
         ){
-        Tile::draw_board(flip_board);
+        // Tile::draw_board(flip_board);
 
         if draw_attacks {
-            self.pieces.iter().for_each(|(t,p)|{
-                t.attack_neighbours(p).into_iter()
-                .for_each(|target|{
-                    let origin : Vec2 = t.to_world(flip_board).into();
-                    
-                    let target_cent : Vec2 = target.to_world(flip_board).into();
-                    let dir = (target_cent-origin).normalize();
-
-                    let start = origin + dir * 0.6;
-                    let end = target_cent-dir * 0.6;
-
-                    // let orth_disp = vec2(-dir.y,dir.x) * 0.1 * match p.color{
-                    //     Player::Black => -1.0,
-                    //     Player::White => 1.0,
-                    // };
-
-                    
-
-                    arrows::draw_arrow(
-                        start,// + orth_disp, 
-                        end,// + orth_disp, 
-                        p.color.to_color(), 
-                        0.1, 0.2, 0.4,
-
-                    )
-                });
-            })
+            self.draw_attacks(flip_board,1.0)
         }
 
         self.pieces.iter().for_each(|(t,p)|{
@@ -192,33 +199,33 @@ impl State{
             Tile::draw_tile_numbers(font, flip_board);
         }
 
-        draw_text_ex(
-            &format!("{} to play.", 
-            match self.to_play{
-                Player::Black => "Black",
-                Player::White => "White",
-            }),
-            -2.0*(BOARD_RADIUS as f32), -2.0*(BOARD_RADIUS as f32),
-            TextParams{
-                font, 
-                font_size : 32,
-                font_scale : 1.0/32.0,
-                color : BLACK,
-                ..Default::default()
-            }
-        );
+        // draw_text_ex(
+        //     &format!("{} to play.", 
+        //     match self.to_play{
+        //         Player::Black => "Black",
+        //         Player::White => "White",
+        //     }),
+        //     -2.0*(BOARD_RADIUS as f32), -2.0*(BOARD_RADIUS as f32),
+        //     TextParams{
+        //         font, 
+        //         font_size : 32,
+        //         font_scale : 1.0/32.0,
+        //         color : BLACK,
+        //         ..Default::default()
+        //     }
+        // );
 
-        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.4);
+        // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.4);
 
-        draw_text_ex(
-            &format!("{:?}", self.zobrist_hash),
-            -3.0,
-            5.0,
-            TextParams{font,font_scale,font_scale_aspect,font_size,
-                color : Color::from_rgba(0x11, 0x11, 0x11, 127),
-                ..Default::default()
-            }
-        );
+        // draw_text_ex(
+        //     &format!("{:?}", self.zobrist_hash),
+        //     -3.0,
+        //     5.0,
+        //     TextParams{font,font_scale,font_scale_aspect,font_size,
+        //         color : Color::from_rgba(0x11, 0x11, 0x11, 127),
+        //         ..Default::default()
+        //     }
+        // );
         
     }
 
@@ -229,7 +236,7 @@ impl State{
         .filter(|(_,&piece)| piece.color == self.to_play)
         .map(|(t,piece)|{
             
-            t.move_neighbours(piece).into_iter()
+            neighbours_move(t,*piece).into_iter()
             .filter(|n| 
                 if let Some(dest_occupant) = self.pieces.get(n){
                     (piece.species != PieceType::Flat) &
@@ -246,13 +253,9 @@ impl State{
         .flatten().collect()
     }
 
-    pub fn apply_move(&mut self, ply : Ply){
-        let (from_tile,to_tile) = (ply.from_tile, ply.to_tile);
-
-        
-
-
-        let moving_piece = match self.pieces.entry(from_tile){
+    #[inline]
+    pub fn pull_moving_piece(&mut self, from_tile : Tile) -> Piece{
+        match self.pieces.entry(from_tile){
             Occupied(mut entry) => {
                 let original = entry.get().clone();
                 assert_eq!(original.color,self.to_play);
@@ -273,10 +276,33 @@ impl State{
                 }
             },
             Vacant(..) => panic!() 
-        };
+        }
+    }
 
-        // let destination = self.pieces.get_mut(to_tile);
-        // let original = destination.clone();
+    #[inline]
+    pub fn stage_attack_scan(&mut self, attacking_player : Player) -> Vec<(Tile,Piece)>{
+        let attack_amts = self.attack_map(attacking_player);
+
+        let killed_tiles : Vec<Tile> = self.pieces.iter()
+            .filter(|(_,p)|p.color != attacking_player)
+            .filter(|(t,p)|{
+                if let Some(&attack) = attack_amts.get(t){
+                    p.defence() <= attack
+                } else {false}
+            }).map(|(t,_)|*t).collect();
+
+        killed_tiles.into_iter().map(|t|{
+                let killed_piece = self.pieces.remove(&t).unwrap();
+                self.zobrist_hash.toggle_piece(&t, &killed_piece);
+                (t,killed_piece)
+            })
+            .collect()
+    }
+
+    pub fn stage_translate(&mut self, ply : Ply){
+        let (from_tile,to_tile) = (ply.from_tile, ply.to_tile);
+
+        let moving_piece = self.pull_moving_piece(from_tile);
 
         match self.pieces.entry(to_tile){
             Vacant(vacancy) => {
@@ -304,47 +330,17 @@ impl State{
                 
             }
         } 
+    }
 
-        
+    pub fn apply_move(&mut self, ply : Ply){
+        self.stage_translate(ply);
 
         let attacking_player = self.to_play;
 
-        let attack_amts = self.attack_map(attacking_player);
+        let kills = self.stage_attack_scan(attacking_player);
 
-        // let kill_codes : Vec<u8> = attack_amts.into_iter().enumerate()
-        // .filter(|(_,amt)| *amt > 0)
-        // .flat_map(|(code , amt)|{
-        //     let code = code as u8;
-        //     let p = self.pieces.get_by_code(code);
-        //     if let Some(p) = p{
-        //         if (p.color != attacking_player) & (amt > p.defence()){
-        //             Some(code)
-        //         }
-        //         else {
-        //             None
-        //         }
-        //     } else {None}
-        // }).collect();
-
-        // let killed = kill_codes.into_iter().map(|kill_code|{
-        //     let kill_code = kill_code as u8;
-        //     self.pieces.remove_by_code(kill_code).unwrap()
-        // }).flat_map(|p|p.unstack());
-
-        let killed_tiles : Vec<Tile> = self.pieces.iter()
-            .filter(|(_,p)|p.color != attacking_player)
-            .filter(|(t,p)|{
-                if let Some(&attack) = attack_amts.get(t){
-                    p.defence() <= attack
-                } else {false}
-            })
-            .map(|(t,_)|*t)
-            .collect();
-
-        self.captured.extend(killed_tiles.into_iter()
-            .flat_map(|t|{
-                let killed_piece = self.pieces.remove(&t).unwrap();
-                self.zobrist_hash.toggle_piece(&t, &killed_piece);
+        self.captured.extend(kills.into_iter()
+            .flat_map(|(_,killed_piece)|{
                 killed_piece.unstack()
             })
         );
@@ -365,13 +361,17 @@ impl State{
     //     ).collect()
     // }
 
+    pub fn clear_tile(&mut self, location : &Tile){
+        let _ = self.pieces.remove(location);
+    }
+
     pub fn attack_map(&self, attacking_player : Player) -> BoardMap<u8>{
         let mut amap = BoardMap::new();
 
         self.pieces.iter()
         .filter(|(_,&p)|p.color == attacking_player)
         .for_each(|(t,p)|
-            t.attack_neighbours(p).into_iter()
+            neighbours_attack(*t,*p).into_iter()
             .for_each(|n|
                 match amap.entry(n) {
                     Occupied(mut entry) => {*entry.get_mut() += p.attack();},
@@ -403,6 +403,8 @@ impl State{
         let mut transp_table = TranspositionalTable::new();
 
         for m in self.valid_moves().into_iter(){
+            next_frame().await;
+
             let mut copy = self.clone();
             copy.apply_move(m);
             let evaluation = copy.eval(depth-1, &mut transp_table).await;
@@ -417,6 +419,8 @@ impl State{
             // }
         };
         
+        let mut rng = ::rand::thread_rng();
+        scored_moves.shuffle(&mut rng);
 
         match self.to_play{
             Player::White => scored_moves.sort_by(|(_,s1),(_,s2)| s1.score.partial_cmp(&s2.score).unwrap().reverse()),
@@ -430,16 +434,33 @@ impl State{
         self.eval_alphabeta(depth, Score::win_now(Player::Black), Score::win_now(Player::White), transp).await
     }
 
-    fn eval_heuristic(&self) -> Score{
-        for p in [Player::White,Player::Black]{
-            if let Some(piece) = self.pieces.get(&Tile::corner(p)){
-                if (piece.species == PieceType::Flat) & (piece.color == p.flip()){
-                    return match p{
-                        Player::Black => Score::win_now(Player::White),
-                        Player::White => Score::win_now(Player::Black),
-                    }
+    fn is_won_home(&self) -> Option<Player>{
+        for defender in [Player::White,Player::Black]{
+            if let Some(piece) = self.pieces.get(&Tile::corner(defender)){
+                let attacker = defender.flip();
+                if (piece.species == PieceType::Flat) & (piece.color == attacker){
+                    return Some(attacker);
                 }
             }
+        };
+        None
+    }
+
+    pub fn is_won(&self) -> Option<Player>{
+        if let Some(winner) = self.is_won_home(){
+            return Some(winner)
+        };
+
+        if self.valid_moves().len() == 0{
+            return Some(self.to_play.flip())
+        };
+
+        None
+    }
+
+    fn eval_heuristic(&self) -> Score{
+        if let Some(winner)  = self.is_won_home(){
+            return Score::win_now(winner);
         }
         
 
@@ -506,12 +527,12 @@ impl State{
                             let sub_score = sub_result.score.propagate();
                             nodes_count += sub_result.nodes;
 
-                            if depth == 6{
-                            //     if nodes_count > NODES_PER_FRAME
-                            //     {
-                                    next_frame().await;
-                            //     }
-                            }
+                            // if depth == 6{
+                            // //     if nodes_count > NODES_PER_FRAME
+                            // //     {
+                            //         next_frame().await;
+                            // //     }
+                            // }
 
                             value = match self.to_play{
                                 Player::White => value.max(sub_score),
