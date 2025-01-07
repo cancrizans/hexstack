@@ -398,7 +398,10 @@ impl MoveAnimState{
 enum GameStateMachine{
     Setup,
     Polling,
-    Animating(MoveAnimState)
+    Animating(MoveAnimState),
+    Won{
+        winner : Player
+    }
 }
 
 
@@ -562,16 +565,38 @@ impl GameApp{
                 anim_state.tick();
                 if anim_state.time > MOVE_ANIM_DURATION{
                     self.last_kill_tiles = anim_state.kills.iter().map(|(t,_)|*t).collect();
-                    self.ask();
+
+                    if let Some(winner) = self.game_state.is_won(){
+                        self.app_state = GameStateMachine::Won { winner }
+                    } else {
+                        self.ask();
+                    }
                 }
                 
-            }
+            },
+
+            GameStateMachine::Won { .. } => {}
 
         }
 
         
 
         Tile::draw_board(false);
+
+        match self.app_state{
+            GameStateMachine::Won { winner } => {
+                self.game_state.state.pieces.iter().for_each(|(t,p)|{
+                    let col = if p.color == winner {
+                        Color::from_hex(0x66dd66)
+                    } else {
+                        Color::from_hex(0xdd6666)
+                    };
+
+                    t.draw_highlight_fill(col, false);
+                });
+            },
+            _ => {}
+        }
 
         if let Some([from,to]) = self.last_touched_tiles{
             for (t,col) in [(from, Color::from_rgba(0xee, 0xdd,0x11, 90)), (to, Color::from_hex(0xeedd11))]{
@@ -667,7 +692,7 @@ impl GameApp{
 pub fn window_conf()->Conf{
     Conf{
         window_title : "board game".to_owned(),
-        window_resizable : true,
+        window_resizable : false,
         window_width : 1280,
         window_height : 720,
         ..Default::default()
