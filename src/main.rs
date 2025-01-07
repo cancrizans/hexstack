@@ -11,7 +11,7 @@ use hexstack::game;
 use hexstack::game::window_conf as game_window_conf;
 use hexstack::game::GamerSpec;
 use hexstack::Player;
-use macroquad::window::next_frame;
+use macroquad::window::{next_frame, screen_height};
 
 use hexstack::assets::Assets;
 
@@ -35,6 +35,9 @@ async fn match_ui() -> ([GamerSpec;2],Option<Player>){
 
     loop {
         egui_macroquad::ui(|egui_ctx|{
+
+            egui_ctx.set_pixels_per_point(screen_height() / 720.0);
+
             egui_ctx.set_visuals(egui::Visuals::light());
 
             egui::CentralPanel::default()
