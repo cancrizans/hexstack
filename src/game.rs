@@ -6,9 +6,55 @@ use itertools::Itertools;
 use macroquad::prelude::*;
 
 use macroquad::experimental::coroutines::{start_coroutine,Coroutine};
+use ::rand::distributions::Open01;
 use ::rand::Rng;
 
 const MOVE_ANIM_DURATION : f32 = 0.15;
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum GamerSpec{
+    Human,
+    Gibberish,
+    Noob,
+    Decent,
+    Sharp,
+    Tough,
+    Beastly
+}
+
+impl GamerSpec{
+    pub fn name(&self) -> &str{
+        self.texts().0
+    }
+    pub fn description(&self) -> &str{
+        self.texts().1
+    }
+
+    pub fn texts(&self) -> (&str,&str){
+        match self{
+            GamerSpec::Human => ("Human", "Human player (mouse)."),
+            GamerSpec::Gibberish => ("Gibberish", "Makes random moves."),
+            GamerSpec::Noob => ("Noob", "Poor player."),
+            GamerSpec::Decent => ("Decent", "Solid player."),
+            GamerSpec::Sharp => ("Sharp", "Serious challenge."),
+            GamerSpec::Tough => ("Tough", "Very strong."),
+            GamerSpec::Beastly => ("Beastly", "Is it even beatable?")
+        }
+    }
+
+    fn make(self, piece_tex : Texture2D) -> Box<dyn Gamer>{
+        match self{
+            GamerSpec::Human => Human::new_boxed(piece_tex),
+            GamerSpec::Gibberish => Bot::new_boxed(0,0.0),
+            GamerSpec::Noob => Bot::new_boxed(1, 0.2),
+            GamerSpec::Decent => Bot::new_boxed(2, 0.2),
+            GamerSpec::Sharp => Bot::new_boxed(3, 0.4),
+            GamerSpec::Tough => Bot::new_boxed(5, 0.6),
+            GamerSpec::Beastly => Bot::new_boxed(6, 0.0)
+        }
+    }
+}
+
 
 struct FatGameState{
     state : State,
@@ -116,37 +162,50 @@ enum Decision{
     TakeBack
 }
 
-pub trait Gamer{
+trait Gamer{
     fn assign_puzzle(&mut self, state : State);
     fn poll_answer(&mut self) -> Option<Decision>;
     fn process(&mut self, camera : &Camera2D, font : Font, as_player : Player);
+
+    fn avatar_offset(&self) -> usize;
 }
 
-#[derive(PartialEq, Eq, Debug)]
-enum BotState{
-    Idle,
-    Thinking
-}
 
-pub struct Bot{
+struct Bot{
     depth : usize,
+    blundering_probability : f32,
 
     result_future : Option<Coroutine<Vec<(Ply,EvalResult)>>>,
+    last_used_depth : Option<usize>,
 }
 
 impl Bot{
-    pub fn new(depth : usize) -> Bot{
+    fn new(depth : usize, blundering_probability : f32) -> Bot{
         Bot { 
             depth ,
-            result_future : None
+            blundering_probability,
+            result_future : None,
+            last_used_depth : None
         }
     }
     
+    fn new_boxed(depth : usize, blundering_probability : f32) -> Box<Bot>{
+        Box::new(Self::new(depth,blundering_probability))
+    }
 }
 
 impl Gamer for Bot{
     fn assign_puzzle(&mut self, state : State) {
-        self.result_future = Some(start_coroutine(state.moves_with_score(self.depth)));
+        let mut depth = self.depth;
+
+        let mut rng = ::rand::thread_rng();
+        while rng.sample::<f32,Open01>(Open01) < self.blundering_probability {
+            depth = depth.saturating_sub(1)
+        }
+
+        self.last_used_depth = Some(depth);
+
+        self.result_future = Some(start_coroutine(state.moves_with_score(depth)));
     }
 
     fn poll_answer(&mut self) -> Option<Decision> {
@@ -160,44 +219,54 @@ impl Gamer for Bot{
     }
 
     fn process(&mut self, _camera : &Camera2D, font : Font, as_player : Player){
-        let (x,y) = as_player.ui_info_pos().into();
+        // let (x,y) = as_player.ui_info_pos().into();
 
-        let tag = format!("Bot ({}-ply depth) {}",
-            self.depth,
-            match self.result_future{
-                None => "",
-                Some(..) => "thinking..."
-            }
-        );
+        // let tag = format!("Bot {} {}",
+        //     if let Some(lud) = self.last_used_depth{
+        //         format!("({}-ply depth)", lud)
+        //     } else {"".to_string()},
+        //     match self.result_future{
+        //         None => "",
+        //         Some(..) => "thinking..."
+        //     }
+        // );
 
-        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
-        draw_text_ex(
-            &tag,
-            x-3.0,
-            y,
-            TextParams{font,font_scale,font_scale_aspect,font_size,
-                color : Color::from_hex(0x111111),
-                ..Default::default()
-            }
-        );
+        // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
+        // draw_text_ex(
+        //     &tag,
+        //     x-3.0,
+        //     y,
+        //     TextParams{font,font_scale,font_scale_aspect,font_size,
+        //         color : Color::from_hex(0x111111),
+        //         ..Default::default()
+        //     }
+        // );
     }
+
+    fn avatar_offset(&self) -> usize {1}
 }
 
-pub struct Human{
+struct Human{
     selected_tile : Option<Tile>,
     puzzle_state : Option<State>,
     available_moves : Option<HashSet<Ply>>,
     answer : Option<Decision>,
+    piece_tex : Texture2D
 }
 
 impl Human{
-    pub fn new()->Self{
+    fn new(piece_tex : Texture2D)->Self{
         Human { 
             selected_tile: None, 
             puzzle_state: None,
             available_moves : None,
             answer : None,
+            piece_tex
          }
+    }
+
+    fn new_boxed(piece_tex : Texture2D)->Box<Self>{
+        Box::new(Self::new(piece_tex ))
     }
 
     fn reset(&mut self){
@@ -233,17 +302,17 @@ impl Gamer for Human{
     }
 
     fn process(&mut self, camera : &Camera2D, font : Font, as_player : Player) {
-        let (x,y) = as_player.ui_info_pos().into();
-        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
-        draw_text_ex(
-            "You (Human?)",
-            x-3.0,
-            y,
-            TextParams{font,font_scale,font_scale_aspect,font_size,
-                color : Color::from_hex(0x111111),
-                ..Default::default()
-            }
-        );
+        // let (x,y) = as_player.ui_info_pos().into();
+        // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
+        // draw_text_ex(
+        //     "You (Human?)",
+        //     x-3.0,
+        //     y,
+        //     TextParams{font,font_scale,font_scale_aspect,font_size,
+        //         color : Color::from_hex(0x111111),
+        //         ..Default::default()
+        //     }
+        // );
 
         if is_key_pressed(KeyCode::Backspace){
             self.answer = Some(Decision::TakeBack)
@@ -254,7 +323,7 @@ impl Gamer for Human{
 
             if let Some(selected) = self.selected_tile{
                 av_moves.iter().filter(|p|p.from_tile == selected)
-                    .for_each(|p|p.to_tile.draw_move_target(false));
+                    .for_each(|p|p.to_tile.draw_move_target(as_player,self.piece_tex, false));
             }
 
             if let Some(mouse_hover) = Self::mouse_tile(camera){
@@ -287,6 +356,8 @@ impl Gamer for Human{
         }
     
     }
+
+    fn avatar_offset(&self) -> usize {0}
 }
 
 
@@ -337,6 +408,8 @@ struct GameApp{
     game_state : FatGameState,
     
     piece_tex : Texture2D,
+    avatars_tex : Texture2D,
+
     font : Font,
 
     gamers : HashMap<Player, Box<dyn Gamer>>,
@@ -347,10 +420,15 @@ struct GameApp{
     app_state : GameStateMachine,
 
     attack_patterns_alpha : f32,
+
+    smoothed_to_play : f32,
 }
 
 impl GameApp{
-    async fn new(gamers_spec : [Option<usize>;2])->GameApp{
+    async fn new(
+            gamers_spec : [GamerSpec;2],
+            first_gamer_color : Option<Player>
+        )->GameApp{
         let font = load_ttf_font("gfx/Roboto-Regular.ttf")
             .await
             .unwrap();
@@ -358,22 +436,23 @@ impl GameApp{
 
         let mut gamers :HashMap<Player, Box<dyn Gamer>> = HashMap::new();
         
-        let human_is_white : bool = ::rand::thread_rng().gen();
-        let human_color = if human_is_white {Player::White} else {Player::Black};
+        let first_gamer_color = if let Some(color) = first_gamer_color{
+            color
+        } else {
+            if ::rand::thread_rng().gen::<bool>() {
+                Player::White
+            } else {
+                Player::Black
+            }
+        };
+        
+        let piece_tex = load_texture("gfx/pieces_sm.png").await.unwrap();
+        
+        let [gm0,gm1] = gamers_spec.map(|s|s.make(piece_tex));
 
         
-        let gm0: Box<dyn Gamer>= match gamers_spec[0]{
-            Some(depth) => Box::new(Bot::new(depth)),
-            None => Box::new(Human::new())
-        };
-        let gm1: Box<dyn Gamer> = match gamers_spec[1]{
-            Some(depth) => Box::new(Bot::new(depth)),
-            None => Box::new(Human::new())
-        };
-
-        
-        gamers.insert(human_color, gm0);
-        gamers.insert(human_color.flip(), gm1);
+        gamers.insert(first_gamer_color, gm0);
+        gamers.insert(first_gamer_color.flip(), gm1);
 
 
             // (Player::White, Box::new(Bot::new(3))),
@@ -384,7 +463,9 @@ impl GameApp{
             
             game_state : FatGameState::setup(),
 
-            piece_tex : load_texture("gfx/pieces_sm.png").await.unwrap(),
+            piece_tex,
+            avatars_tex : load_texture("gfx/avatars.png").await.unwrap(),
+
             font ,
 
 
@@ -395,6 +476,8 @@ impl GameApp{
 
             last_kill_tiles : vec![],
             attack_patterns_alpha : 0.0,
+
+            smoothed_to_play : 0.0,
         };
 
         
@@ -430,9 +513,15 @@ impl GameApp{
     }
 
     async fn process(&mut self){
+        let delta_t = get_frame_time();
+
         self.attack_patterns_alpha += 5.0 *(
             (if is_mouse_button_down(MouseButton::Right) {1.0} else {0.0}) - self.attack_patterns_alpha
-        ) * get_frame_time();
+        ) * delta_t;
+
+        self.smoothed_to_play += 6.0 * (
+            (match self.game_state.to_play() {Player::Black => 1.0, Player::White => 0.0}) - self.smoothed_to_play
+        ) * delta_t;
 
 
         let cam = Camera2D{
@@ -538,7 +627,40 @@ impl GameApp{
             ]{
             let gamer = self.gamers.get_mut(&player).unwrap();
             gamer.process(&cam,self.font, player);
+
+
+            let strength = match player{
+                Player::Black => self.smoothed_to_play,
+                Player::White => 1.0 - self.smoothed_to_play
+            };
+            
+
+            let size = vec2(2.0,2.0).lerp(vec2(3.0,3.0), strength);
+            let pos = player.ui_info_pos() - size*0.5;
+
+            let avatar_src = Rect::new(
+                (128 * gamer.avatar_offset()) as f32,
+                (128 * match player {
+                    Player::Black => 1,
+                    Player::White => 0
+                }) as f32,
+                128.0,128.0
+            );
+
+            draw_texture_ex(
+                self.avatars_tex, 
+                pos.x, 
+                pos.y, 
+                Color::from_vec(vec4(1.0,1.0,1.0,strength*0.5+0.5)), 
+                DrawTextureParams{
+                    source : Some(avatar_src),
+                    dest_size : Some(size),
+                    ..Default::default()
+                }
+            );
         }
+
+
     }
 }
 
@@ -553,8 +675,11 @@ pub fn window_conf()->Conf{
 }
 
 
-pub async fn main(gamers : [Option<usize>;2]) {
-    let mut state = GameApp::new(gamers).await;
+pub async fn main(gamers : [GamerSpec;2], first_gamer_color : Option<Player>) {
+    let mut state = GameApp::new(
+        gamers,
+        first_gamer_color,
+    ).await;
 
     loop{
         clear_background(Color::from_hex(0xeeeeee));        

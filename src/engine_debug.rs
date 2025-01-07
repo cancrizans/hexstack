@@ -315,7 +315,7 @@ impl EngineDebugApp{
                 moves.iter()
                 .filter(|(m,_)|m.from_tile == t)
                 .map(|(m,_)|m.to_tile)
-                .for_each(|target|target.draw_move_target(self.flip_board));
+                .for_each(|target|target.draw_move_target(crate::Player::White, self.piece_tex,self.flip_board));
             };
         }
 

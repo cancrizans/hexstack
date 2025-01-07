@@ -29,8 +29,8 @@
      inkscape:document-units="mm"
      showgrid="true"
      inkscape:zoom="8.8828128"
-     inkscape:cx="31.296393"
-     inkscape:cy="33.60422"
+     inkscape:cx="26.005276"
+     inkscape:cy="220.93227"
      inkscape:window-width="2560"
      inkscape:window-height="1351"
      inkscape:window-x="-9"
@@ -323,7 +323,7 @@
        rx="5.2916665" />
     <path
        sodipodi:type="star"
-       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
        id="path4"
        inkscape:flatsided="false"
        sodipodi:sides="4"
@@ -338,7 +338,7 @@
        d="m 42.333328,2.1166668 1.616446,4.7335535 4.733554,1.6164461 -4.733554,1.6164456 -1.616446,4.733554 -1.616446,-4.733554 -4.733553,-1.6164459 4.733553,-1.6164458 z" />
     <path
        sodipodi:type="star"
-       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:10.3;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10.3;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
        id="path5"
        inkscape:flatsided="false"
        sodipodi:sides="4"
@@ -412,7 +412,7 @@
        cy="8.4666662"
        r="0.52916664" />
     <ellipse
-       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10.3;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
+       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.52916698;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10.3;stroke-dasharray:none;stroke-opacity:1;paint-order:normal"
        id="circle39"
        cx="8.4666662"
        cy="7.9374995"
@@ -543,6 +543,14 @@
          inkscape:randomized="0"
          d="m 42.333328,47.095832 -0.351283,-4.033053 -3.372189,2.239923 2.934146,-2.789211 -3.853768,-1.239915 4.010104,0.554963 -1.433381,-3.786071 2.066371,3.481239 2.066371,-3.481239 -1.43338,3.786071 4.010103,-0.554963 -3.853768,1.239915 2.934147,2.789211 -3.37219,-2.239923 z"
          inkscape:transform-center-y="0.23581731" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#ffffff;stroke-width:0.52916667;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:100;stroke-opacity:1;stroke-dasharray:none"
+         d="m 44.098153,42.482729 c -0.881012,-1.058333 -2.397813,-1.033959 -3.352321,-0.149397 1.058335,1.027618 2.471307,0.678564 3.352321,0.149397 z"
+         id="path1" />
+      <path
+         style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.52916667;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:100;stroke-opacity:1;stroke-dasharray:none"
+         d="m 42.33333,41.804166 v 1.058333"
+         id="path13" />
     </g>
     <path
        id="path25"
@@ -663,7 +671,8 @@
        y="0"
        xlink:href="#g165"
        id="use165"
-       transform="translate(0,15.345834)" />
+       transform="translate(0,15.345834)"
+       style="stroke-width:1.00000003;stroke-dasharray:none" />
     <ellipse
        style="fill:#111111;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10.3;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="ellipse180"
@@ -709,5 +718,19 @@
        sodipodi:arc-type="arc"
        d="M 12.885486,43.912314 A 4.7624998,4.2333331 0 0 1 8.4334179,46.566562 4.7624998,4.2333331 0 0 1 4.0234752,43.857318"
        sodipodi:open="true" />
+    <ellipse
+       style="fill:#ffffff;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:100;stroke-dasharray:none;stroke-opacity:1"
+       id="path14"
+       cx="8.4666662"
+       cy="25.4"
+       rx="1.5874999"
+       ry="1.5875" />
+    <ellipse
+       style="fill:#111111;fill-opacity:1;stroke:#111111;stroke-width:0.529167;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:100;stroke-dasharray:none;stroke-opacity:1"
+       id="path15"
+       cx="8.4666662"
+       cy="59.266666"
+       rx="1.5874999"
+       ry="1.5875" />
   </g>
 </svg>

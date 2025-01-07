@@ -224,11 +224,26 @@ impl Tile{
         draw_hexagon(x, y, 1.0, 0.0, true,BLACK, color);
     }
 
-    pub fn draw_move_target(&self, flip_board : bool){
+    pub fn draw_move_target(&self, color : Player, piece_tex : Texture2D, flip_board : bool){
         let (x,y) = self.to_world(flip_board);
-        const R : f32 = 0.2;
-        draw_circle(x, y, R, WHITE);
-        draw_circle_lines(x, y, R, 0.1, BLACK);
+        const R : f32 = 1.0;
+        let src_off = match color{
+            Player::White => 0.0,
+            Player::Black => 1.0
+        };
+
+        draw_texture_ex(
+            piece_tex,
+            x-R,
+            y-R,
+            WHITE, DrawTextureParams{
+                dest_size : Some(vec2(2.0*R,2.0*R)),
+                source : Some(Rect::new(0.0,128.0*(1.0 + 2.0*src_off),128.0,128.0)),
+                ..Default::default()
+            }
+        )
+        // draw_circle(x, y, R, WHITE);
+        // draw_circle_lines(x, y, R, 0.1, BLACK);
     }
 
     fn tile_color(&self) -> Color{
@@ -400,10 +415,10 @@ impl Player{
     }
 
     pub fn ui_info_pos(&self) -> Vec2 {
-        vec2(3.0,5.5) * match self{
+        vec2(5.0,5.0) * match self{
             Player::White => 1.0,
             Player::Black => -1.0,
-        } + vec2(0.0,0.5)
+        } 
     }
 }
 
