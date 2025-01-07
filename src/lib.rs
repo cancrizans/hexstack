@@ -16,6 +16,8 @@ use board::{neighbours_attack, neighbours_move, BoardMap, Piece, PieceType, Tall
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
+pub mod ui;
+pub mod assets;
 
 
 

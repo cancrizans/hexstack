@@ -13,10 +13,9 @@ use hexstack::game::GamerSpec;
 use hexstack::Player;
 use macroquad::window::next_frame;
 
+use hexstack::assets::Assets;
 
-#[macroquad::main(game_window_conf)]
-async fn main(){
-
+async fn match_ui() -> ([GamerSpec;2],Option<Player>){
     let choices = [
         GamerSpec::Human,
         GamerSpec::Gibberish,
@@ -123,7 +122,18 @@ async fn main(){
             break;
         }
         next_frame().await
-    }
+    };
 
-    game::main(gamers, p1_color).await
+    (gamers,p1_color)
+}
+
+#[macroquad::main(game_window_conf)]
+async fn main(){
+
+    let assets : Assets = Assets::load().await;
+
+    loop{
+        let (gamers,p1_color) = match_ui().await;    
+        game::main(&assets,gamers, p1_color).await
+    }
 }

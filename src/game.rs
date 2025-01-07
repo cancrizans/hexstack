@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::assets::Assets;
 use crate::board::Piece;
+use crate::ui::{Button, Ui};
 use crate::{EvalResult, Player, Ply, State, Tile};
 use itertools::Itertools;
 use macroquad::prelude::*;
@@ -42,9 +44,9 @@ impl GamerSpec{
         }
     }
 
-    fn make(self, piece_tex : Texture2D) -> Box<dyn Gamer>{
+    fn make(self, assets : &Assets) -> Box<dyn Gamer>{
         match self{
-            GamerSpec::Human => Human::new_boxed(piece_tex),
+            GamerSpec::Human => Human::new_boxed(assets),
             GamerSpec::Gibberish => Bot::new_boxed(0,0.0),
             GamerSpec::Noob => Bot::new_boxed(1, 0.2),
             GamerSpec::Decent => Bot::new_boxed(2, 0.2),
@@ -129,7 +131,7 @@ impl FatGameState{
 
             draw_text_ex(
                 &text,
-                7.0,
+                -12.0,
                 -6.5 + 0.35*(i as f32),
                 TextParams{font,font_scale,font_scale_aspect,font_size,
                     color : Color::from_hex(0x111111),
@@ -165,7 +167,7 @@ enum Decision{
 trait Gamer{
     fn assign_puzzle(&mut self, state : State);
     fn poll_answer(&mut self) -> Option<Decision>;
-    fn process(&mut self, camera : &Camera2D, font : Font, as_player : Player);
+    fn process(&mut self, ui : &Ui, as_player : Player);
 
     fn avatar_offset(&self) -> usize;
 }
@@ -218,7 +220,7 @@ impl Gamer for Bot{
         answer.map(|rep|Decision::Move(rep))
     }
 
-    fn process(&mut self, _camera : &Camera2D, font : Font, as_player : Player){
+    fn process(&mut self, _ui : &Ui, _as_player : Player){
         // let (x,y) = as_player.ui_info_pos().into();
 
         // let tag = format!("Bot {} {}",
@@ -251,22 +253,29 @@ struct Human{
     puzzle_state : Option<State>,
     available_moves : Option<HashSet<Ply>>,
     answer : Option<Decision>,
-    piece_tex : Texture2D
+    piece_tex : Texture2D,
+
+    btn_takeback : Button,
 }
 
 impl Human{
-    fn new(piece_tex : Texture2D)->Self{
+    fn new(assets : & Assets)->Self{
         Human { 
             selected_tile: None, 
             puzzle_state: None,
             available_moves : None,
             answer : None,
-            piece_tex
+            piece_tex : assets.pieces,
+            btn_takeback : Button::new(
+                assets.btn_takeback,
+                Rect::new(7.0,1.0,1.0,1.0),
+                "Undo Move".to_string()
+            ),
          }
     }
 
-    fn new_boxed(piece_tex : Texture2D)->Box<Self>{
-        Box::new(Self::new(piece_tex ))
+    fn new_boxed(assets : &Assets)->Box<Self>{
+        Box::new(Self::new(assets ))
     }
 
     fn reset(&mut self){
@@ -301,7 +310,7 @@ impl Gamer for Human{
         
     }
 
-    fn process(&mut self, camera : &Camera2D, font : Font, as_player : Player) {
+    fn process(&mut self, ui : &Ui, as_player : Player) {
         // let (x,y) = as_player.ui_info_pos().into();
         // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
         // draw_text_ex(
@@ -314,19 +323,17 @@ impl Gamer for Human{
         //     }
         // );
 
-        if is_key_pressed(KeyCode::Backspace){
-            self.answer = Some(Decision::TakeBack)
-        }
-
         if let Some(av_moves) = &self.available_moves{
-            
+            if self.btn_takeback.process(&ui){
+                self.answer = Some(Decision::TakeBack);
+            }
 
             if let Some(selected) = self.selected_tile{
                 av_moves.iter().filter(|p|p.from_tile == selected)
                     .for_each(|p|p.to_tile.draw_move_target(as_player,self.piece_tex, false));
             }
 
-            if let Some(mouse_hover) = Self::mouse_tile(camera){
+            if let Some(mouse_hover) = Self::mouse_tile(ui.camera){
                 mouse_hover.draw_highlight_outline(0.05, WHITE, false); 
 
                 if let Some(selected) = self.selected_tile{
@@ -406,7 +413,8 @@ enum GameStateMachine{
 
 
 
-struct GameApp{
+struct GameApp<'a>{
+    assets : &'a Assets,
     
     game_state : FatGameState,
     
@@ -423,12 +431,20 @@ struct GameApp{
     app_state : GameStateMachine,
 
     attack_patterns_alpha : f32,
+    attack_patterns_toggle : bool,
 
     smoothed_to_play : f32,
+
+
+    // btn_takeback : Button,
+    btn_toggle_lines : Button,
+    btn_exit : Button,
+    
 }
 
-impl GameApp{
+impl<'a> GameApp<'a>{
     async fn new(
+            assets : &'a Assets,
             gamers_spec : [GamerSpec;2],
             first_gamer_color : Option<Player>
         )->GameApp{
@@ -449,9 +465,10 @@ impl GameApp{
             }
         };
         
-        let piece_tex = load_texture("gfx/pieces_sm.png").await.unwrap();
+        let piece_tex = assets.pieces;
         
-        let [gm0,gm1] = gamers_spec.map(|s|s.make(piece_tex));
+        let [gm0,gm1] = gamers_spec.map(
+            |s|s.make(assets));
 
         
         gamers.insert(first_gamer_color, gm0);
@@ -463,11 +480,12 @@ impl GameApp{
             // ]);
  
         let app_state = GameApp{
+            assets,
             
             game_state : FatGameState::setup(),
 
             piece_tex,
-            avatars_tex : load_texture("gfx/avatars.png").await.unwrap(),
+            avatars_tex : assets.avatars,
 
             font ,
 
@@ -479,8 +497,23 @@ impl GameApp{
 
             last_kill_tiles : vec![],
             attack_patterns_alpha : 0.0,
+            attack_patterns_toggle : false,
 
             smoothed_to_play : 0.0,
+
+            
+
+            btn_toggle_lines : Button::new(
+                assets.btn_lines,
+                Rect::new(7.0,2.0,1.0,1.0),
+                "Show Patterns".to_string()
+            ),
+
+            btn_exit : Button::new(
+                assets.btn_exit,
+                Rect::new(7.0,3.0,1.0,1.0),
+                "Exit".to_string()
+            ),
         };
 
         
@@ -515,11 +548,11 @@ impl GameApp{
         self.ask();    
     }
 
-    async fn process(&mut self){
+    async fn process(&mut self) -> bool{
         let delta_t = get_frame_time();
 
         self.attack_patterns_alpha += 5.0 *(
-            (if is_mouse_button_down(MouseButton::Right) {1.0} else {0.0}) - self.attack_patterns_alpha
+            (if self.attack_patterns_toggle {1.0} else {0.0}) - self.attack_patterns_alpha
         ) * delta_t;
 
         self.smoothed_to_play += 6.0 * (
@@ -533,6 +566,7 @@ impl GameApp{
             ..Default::default()
         };
         set_camera(&cam);
+        let ui = Ui::new(self.font, &cam);
 
         match &mut self.app_state{
             GameStateMachine::Setup => {
@@ -651,7 +685,7 @@ impl GameApp{
                 self.game_state.to_play().flip()
             ]{
             let gamer = self.gamers.get_mut(&player).unwrap();
-            gamer.process(&cam,self.font, player);
+            gamer.process(&ui,player);
 
 
             let strength = match player{
@@ -686,6 +720,16 @@ impl GameApp{
         }
 
 
+        
+        
+        if self.btn_toggle_lines.process(&ui){
+            self.attack_patterns_toggle ^= true;
+        };
+        if self.btn_exit.process(&ui){
+            return true;
+        };
+
+        false
     }
 }
 
@@ -700,8 +744,9 @@ pub fn window_conf()->Conf{
 }
 
 
-pub async fn main(gamers : [GamerSpec;2], first_gamer_color : Option<Player>) {
+pub async fn main(assets : &Assets,gamers : [GamerSpec;2], first_gamer_color : Option<Player>) {
     let mut state = GameApp::new(
+        assets,
         gamers,
         first_gamer_color,
     ).await;
@@ -709,9 +754,10 @@ pub async fn main(gamers : [GamerSpec;2], first_gamer_color : Option<Player>) {
     loop{
         clear_background(Color::from_hex(0xeeeeee));        
         
-        
-
-        state.process().await; 
+        let quit = state.process().await; 
+        if quit{
+            break;
+        }
 
         next_frame().await
     }
