@@ -694,7 +694,9 @@ impl<'a> GameApp<'a>{
 
                 let t = (anim_state.time / MOVE_ANIM_DURATION).clamp(0.0, 1.0);
                 let lambda = t*t*(3.0-2.0*t);
-                let pos = start.lerp(end,lambda );
+                let pos_ground = start.lerp(end,lambda );
+
+                let pos = pos_ground + (4.0*lambda*(1.0-lambda))*vec2(0.0,-0.3);
                 anim_state.moved_piece.draw(pos.x, pos.y, self.piece_tex, 1.0);
 
 

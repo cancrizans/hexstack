@@ -360,6 +360,11 @@ impl State{
 
         let moved_piece = state_before.clone().pull_moving_piece(ply.from_tile);
         
+        let mut state_simulate_kills = state_before.clone();
+        state_simulate_kills.stage_translate(ply);
+        let kills = state_simulate_kills.stage_attack_scan(state_simulate_kills.to_play);
+
+
         let disambiguate = match moves.iter().filter(|&av|{
             (av.to_tile == ply.to_tile) & 
             (
@@ -372,7 +377,7 @@ impl State{
         };
 
         HistoryEntry{
-            ply, state_before, moved_piece, disambiguate
+            ply, state_before, moved_piece, disambiguate, kills_count : kills.len()
         }
     }
 
@@ -413,9 +418,13 @@ impl State{
     pub async fn moves_with_score(self, depth : usize) -> Vec<(Ply, EvalResult)>{
         
         if depth == 0{
-            return self.valid_moves().into_iter()
+            let mut depth0_moves : Vec<(Ply, EvalResult)> = self.valid_moves().into_iter()
             .map(|m| (m,EvalResult{score:Score::EVEN, nodes: 0}))
-            .collect()
+            .collect();
+            
+            depth0_moves.shuffle(&mut ::rand::thread_rng());
+
+            return depth0_moves;
         }
 
         let heuristic = self.eval_heuristic();
@@ -652,7 +661,8 @@ pub struct HistoryEntry{
     ply : Ply,
     moved_piece : Piece,
 
-    disambiguate : bool
+    disambiguate : bool,
+    kills_count : usize,
 }
 
 impl Display for HistoryEntry{
@@ -663,7 +673,7 @@ impl Display for HistoryEntry{
             format!("{}",self.ply.to_tile)
         };
 
-        write!(f,"{}{}",
+        write!(f,"{}{}{}",
             match self.moved_piece.species{
                 PieceType::Flat => "F",
                 PieceType::Lone(tall) => match tall{
@@ -674,7 +684,9 @@ impl Display for HistoryEntry{
                 PieceType::Stack(..) => "?"
             },
 
-            move_rep
+            move_rep,
+
+            (0..self.kills_count).map(|_|'*').collect::<String>()
         )
     }
 }
