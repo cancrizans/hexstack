@@ -60,6 +60,7 @@ impl GamerSpec{
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct MatchConfig{
     pub gamers : [GamerSpec;2],
     pub gamer_one_color : Option<Player>,

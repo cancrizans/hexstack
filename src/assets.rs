@@ -23,7 +23,7 @@ impl RandomClip{
             looped : false,
             volume : 0.5
         });
-        println!("{}",name);
+        // println!("{}",name);
         
     }
 }

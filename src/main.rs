@@ -16,7 +16,7 @@ use hexstack::assets::Assets;
 use macroquad::prelude::*;
 
 
-async fn match_ui(assets : &Assets) -> MatchConfig{
+async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> MatchConfig{
     let choices = [
         GamerSpec::Human,
         GamerSpec::Gibberish,
@@ -28,11 +28,11 @@ async fn match_ui(assets : &Assets) -> MatchConfig{
     ];
 
 
-    let mut match_config = MatchConfig{
+    let mut match_config = last_match_config.unwrap_or(MatchConfig{
         gamers : [GamerSpec::Human, GamerSpec::Noob],
         gamer_one_color : None,
         allow_takeback : true
-    };
+    });
 
 
     let mut break_out = None;
@@ -239,8 +239,12 @@ async fn main(){
         theme::set_fonts(egui_ctx, &assets);
     });
 
+    let mut last_match_config = None;
     loop{
-        let match_config = match_ui(&assets).await;    
-        game::main(&assets,match_config).await
+        let match_config = match_ui(&assets, last_match_config).await;    
+        
+        game::main(&assets,match_config).await;
+        
+        last_match_config = Some(match_config);
     }
 }
