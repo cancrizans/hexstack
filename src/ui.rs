@@ -1,14 +1,16 @@
 use macroquad::prelude::*;
 
+use crate::assets::Assets;
+
 
 pub struct Ui<'a>{
-    font : Font,
+    pub assets : &'a Assets,
     pub camera : &'a Camera2D
 }
 
 impl<'a> Ui<'a>{
-    pub fn new(font : Font, camera : &'a Camera2D)->Self{
-        Ui { font, camera }
+    pub fn new(assets : &'a Assets, camera : &'a Camera2D)->Self{
+        Ui { assets, camera }
     }
 }
 
@@ -57,7 +59,7 @@ impl Button{
                 &self.text,
                 self.rect.x + self.rect.w,
                 self.rect.y + self.rect.h * 0.5 + 0.25,
-                TextParams{font:ui.font,font_scale,font_scale_aspect,font_size,
+                TextParams{font:ui.assets.font,font_scale,font_scale_aspect,font_size,
                     color : Color::from_rgba(0x11, 0x11, 0x11, (255.0 * self.alpha) as u8),
                     ..Default::default()
                 }

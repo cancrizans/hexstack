@@ -421,7 +421,6 @@ struct GameApp<'a>{
     piece_tex : Texture2D,
     avatars_tex : Texture2D,
 
-    font : Font,
 
     gamers : HashMap<Player, Box<dyn Gamer>>,
 
@@ -448,10 +447,7 @@ impl<'a> GameApp<'a>{
             gamers_spec : [GamerSpec;2],
             first_gamer_color : Option<Player>
         )->GameApp{
-        let font = load_ttf_font("gfx/Roboto-Regular.ttf")
-            .await
-            .unwrap();
-        font.set_filter(FilterMode::Linear);
+        
 
         let mut gamers :HashMap<Player, Box<dyn Gamer>> = HashMap::new();
         
@@ -486,8 +482,6 @@ impl<'a> GameApp<'a>{
 
             piece_tex,
             avatars_tex : assets.avatars,
-
-            font ,
 
 
             gamers ,
@@ -566,7 +560,7 @@ impl<'a> GameApp<'a>{
             ..Default::default()
         };
         set_camera(&cam);
-        let ui = Ui::new(self.font, &cam);
+        let ui = Ui::new(self.assets, &cam);
 
         match &mut self.app_state{
             GameStateMachine::Setup => {
@@ -648,7 +642,7 @@ impl<'a> GameApp<'a>{
 
         match &self.app_state{
             GameStateMachine::Animating(anim_state) => {
-                anim_state.drawing_state.draw(self.piece_tex, self.font, false,false,false);
+                anim_state.drawing_state.draw(self.piece_tex, self.assets.font, false,false,false);
                 anim_state.ply.draw(false);
 
 
@@ -673,12 +667,12 @@ impl<'a> GameApp<'a>{
             },
             _ => {
 
-                self.game_state.draw(self.piece_tex, self.font);
+                self.game_state.draw(self.piece_tex, self.assets.font);
                 
             }
         };
 
-        self.game_state.draw_history(self.font);
+        self.game_state.draw_history(self.assets.font);
 
         for player in [
                 self.game_state.to_play(),

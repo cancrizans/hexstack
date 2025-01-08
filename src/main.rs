@@ -133,7 +133,7 @@ async fn match_ui() -> ([GamerSpec;2],Option<Player>){
 #[macroquad::main(game_window_conf)]
 async fn main(){
 
-    let assets : Assets = Assets::load().await;
+    let assets : Assets = Assets::loading_screen().await;
 
     loop{
         let (gamers,p1_color) = match_ui().await;    
