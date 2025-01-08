@@ -5,6 +5,7 @@ use std::{collections::HashMap, fmt::Display};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use itertools::Itertools;
 use macroquad::prelude::*;
 
 mod arrows;
@@ -352,6 +353,29 @@ impl State{
         self.zobrist_hash.toggle_to_move();
     }
 
+    pub fn compute_history_entry(&self, ply : Ply) -> HistoryEntry{
+        let state_before = self.clone();
+
+        let moves = state_before.valid_moves();
+
+        let moved_piece = state_before.clone().pull_moving_piece(ply.from_tile);
+        
+        let disambiguate = match moves.iter().filter(|&av|{
+            (av.to_tile == ply.to_tile) & 
+            (
+                state_before.pieces.get(&av.from_tile).unwrap().species.to_lone() == moved_piece.species
+            )
+        }).count(){
+            0 => panic!("No moves matching {:?} {:?} from move pool {:?}",moved_piece.species,ply, moves),
+            1 => false,
+            _ => true
+        };
+
+        HistoryEntry{
+            ply, state_before, moved_piece, disambiguate
+        }
+    }
+
     // pub fn attack_map(&self, attacking_player : Player) -> HashMap<Tile, u8>{
     //     let bmap = self.attack_boardmap(attacking_player);
     //     bmap.into_iter().enumerate()
@@ -620,3 +644,37 @@ pub fn draw_attack_map(player : Player, attack_map : &HashMap<Tile, u8>, flip_bo
     });
 }
 
+
+
+#[derive(Clone)]
+pub struct HistoryEntry{
+    state_before : State,
+    ply : Ply,
+    moved_piece : Piece,
+
+    disambiguate : bool
+}
+
+impl Display for HistoryEntry{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let move_rep = if self.disambiguate{
+            format!("{}{}",self.ply.from_tile,self.ply.to_tile)
+        } else {
+            format!("{}",self.ply.to_tile)
+        };
+
+        write!(f,"{}{}",
+            match self.moved_piece.species{
+                PieceType::Flat => "F",
+                PieceType::Lone(tall) => match tall{
+                    Tall::Blind => "B",
+                    Tall::Hand => "A",
+                    Tall::Star => "S"
+                },
+                PieceType::Stack(..) => "?"
+            },
+
+            move_rep
+        )
+    }
+}

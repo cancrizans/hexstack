@@ -39,7 +39,7 @@ impl Tile{
     }
 
     pub fn glyph(&self) -> char{
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZØÑŁ".chars().nth(self.code() as usize).unwrap()
+        "abcdefghijklmnopqrstuvwxyzøñł".chars().nth(self.code() as usize).unwrap()
     }
 
     #[inline]
@@ -395,7 +395,25 @@ pub const fn coord_to_char(v : i8) -> char{
 
 impl Display for Tile{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{}",self.glyph())
+
+        let row = self.x();
+        let row_name = match row{
+            -2 => 'a',
+            -1 => 'b',
+            0 => 'c',
+            1 => 'd',
+            2 => 'e',
+            _ => unreachable!()
+        };
+        
+        let tile_nr = -self.y() + match row{
+            -2..=0 => 4,
+            1 => 3,
+            2 => 2,
+            _ => unreachable!()
+        };
+
+        write!(f,"{}{}",row_name,tile_nr)
     }
 }
 
@@ -508,6 +526,13 @@ impl PieceType{
             PieceType::Stack(..) => FLAT_POS_WEIGHT + TALL_POS_WEIGHT,
         }
     }
+
+    pub fn to_lone(&self) -> PieceType{
+        match self{
+            PieceType::Flat | PieceType::Lone(..) => *self,
+            PieceType::Stack(tall) => PieceType::Lone(*tall)
+        }
+    }
 }
 
 #[derive(Clone, Copy,PartialEq, Eq,Hash, Debug)]
@@ -590,7 +615,7 @@ impl Piece{
 
 
 
-#[derive(Clone, Copy,PartialEq,Eq, Hash)]
+#[derive(Clone, Copy,PartialEq,Eq, Hash, Debug)]
 pub struct Ply{
     pub from_tile : Tile,
     pub to_tile : Tile

@@ -4,7 +4,7 @@ use crate::assets::Assets;
 use crate::board::Piece;
 use crate::theme::set_theme;
 use crate::ui::{Button, MqUi};
-use crate::{theme, EvalResult, Player, Ply, State, Tile};
+use crate::{theme, EvalResult, HistoryEntry, Player, Ply, State, Tile};
 use egui::{Color32, Id, Margin};
 use itertools::Itertools;
 use macroquad::audio::{play_sound, play_sound_once, PlaySoundParams};
@@ -72,7 +72,7 @@ struct FatGameState{
     valid_moves : Vec<Ply>,
     is_won : Option<Player>,
 
-    history : Vec<(State,Ply)>,
+    history : Vec<HistoryEntry>,
 }
 
 impl FatGameState{
@@ -96,17 +96,14 @@ impl FatGameState{
         self.is_won
     }
 
-    fn apply_move(&mut self, ply : Ply) -> Piece{
+    fn apply_move(&mut self, ply : Ply){
         assert!(self.is_won.is_none());
 
-        let moving_piece = self.state.clone().pull_moving_piece(ply.from_tile);
-
-        self.history.push((self.state_clone(),ply));
+        let entry = self.state.compute_history_entry(ply);
+        self.history.push(entry);
 
         self.state.apply_move(ply);
         self.refresh();
-
-        moving_piece
     }
 
     fn to_play(&self) -> Player{
@@ -120,37 +117,6 @@ impl FatGameState{
         
     }
 
-    #[allow(dead_code)]
-    fn draw_history(&self, font : Font){
-        self.history.iter().chunks(2).into_iter().enumerate()
-        .for_each(|(i,mut plies)|{
-            let move_num = i+1;
-            let (_,p1) = plies.next().unwrap();
-            
-
-
-            let mut text = format!("{}.  {}",
-                move_num,
-                p1);
-
-            if let Some((_,p2)) = plies.next(){
-                text.push_str(&format!("   {}",p2))
-            } else {};
-
-            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.4);
-
-            draw_text_ex(
-                &text,
-                -12.0,
-                -6.5 + 0.35*(i as f32),
-                TextParams{font,font_scale,font_scale_aspect,font_size,
-                    color : Color::from_hex(0x111111),
-                    ..Default::default()
-                }
-            );
-            
-        });
-    }
 
     fn state_clone(&self) -> State{
         self.state.clone()
@@ -158,8 +124,8 @@ impl FatGameState{
 
     fn undo_moves(&mut self, count : usize){
         (0..count).for_each(|_|
-            if let Some((prev_state,_)) = self.history.pop(){
-                self.state = prev_state;
+            if let Some(entry) = self.history.pop(){
+                self.state = entry.state_before;
             }
         );
 
@@ -599,14 +565,14 @@ impl<'a> GameApp<'a>{
                         self.game_state.history.iter().chunks(2)
                         .into_iter().enumerate().for_each(|(i,mut plies)|{
                             let move_num = i+1;
-                            let (_,p1) = plies.next().unwrap();
+                            let p1 = plies.next().unwrap();
         
                             
                             ui.horizontal(|ui|{
                                 ui.label(egui::RichText::new(format!("{}.",move_num)).strong());
                                 ui.label(format!("{}",p1));
             
-                                if let Some((_,p2)) = plies.next() {
+                                if let Some(p2) = plies.next() {
                                     ui.label(format!("{}",p2));
                                 };
                                 
