@@ -375,14 +375,15 @@ impl MoveAnimState{
 }
 
 enum GameStateMachine{
-    Setup,
+    Setup{
+        time : f32
+    },
     Polling,
     Animating(MoveAnimState),
     Won{
         winner : Player
     }
 }
-
 
 
 struct GameApp<'a>{
@@ -459,14 +460,14 @@ impl<'a> GameApp<'a>{
             gamers ,
             
             last_touched_tiles : None,
-            app_state : GameStateMachine::Setup,
+            app_state : GameStateMachine::Setup{time:0.0},
 
             last_kill_tiles : vec![],
             attack_patterns_alpha : 0.0,
             attack_patterns_toggle : false,
             tile_letters_toggle : false,
 
-            smoothed_to_play : 0.0,
+            smoothed_to_play : 0.5,
 
             btn_tile_letters : Button::new(
                 assets.btn_letters,
@@ -589,10 +590,15 @@ impl<'a> GameApp<'a>{
         });
         egui_macroquad::draw();
 
+        const SETUP_TIME : f32 = 0.5;
 
         match &mut self.app_state{
-            GameStateMachine::Setup => {
-                self.ask();
+            GameStateMachine::Setup{ref mut time} => {
+                if *time < SETUP_TIME{
+                    *time += get_frame_time();
+                } else {
+                    self.ask();
+                }
             },
             GameStateMachine::Polling => {
                 if let Some(_winner) = self.game_state.is_won() {
@@ -758,6 +764,17 @@ impl<'a> GameApp<'a>{
         if self.btn_exit.process(&mqui){
             return true;
         };
+
+
+
+        match self.app_state{
+            GameStateMachine::Setup { time } => {
+                let mut col = theme::BG_COLOR;
+                col.a = (1.0 - time/SETUP_TIME).clamp(0.0, 1.0).powf(1.2);
+                draw_rectangle(-12.0, -12.0, 24.0, 24.0, col);
+            },
+            _=>{}
+        }
 
         false
     }
