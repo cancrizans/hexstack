@@ -37,7 +37,7 @@ impl GamerSpec{
     pub fn texts(&self) -> (&str,&str){
         match self{
             GamerSpec::Human => ("Human", "Human player."),
-            GamerSpec::Gibberish => ("Gibberish", "Makes random moves."),
+            GamerSpec::Gibberish => ("Gibberish", "Random moves."),
             GamerSpec::Noob => ("Noob", "Poor player."),
             GamerSpec::Decent => ("Decent", "Solid player."),
             GamerSpec::Sharp => ("Sharp", "Serious challenge."),
@@ -585,11 +585,14 @@ impl<'a> GameApp<'a>{
             .show(egui_ctx, |ui| {
                 set_theme(ui);
                 
+                
 
                 egui::ScrollArea::vertical()
                 .max_width(300.0)
                 .id_source("history")
                 .show(ui,|ui|{
+                    ui.set_max_width(150.0);
+                    ui.set_min_width(150.0);
                     ui.vertical(|ui|{
                         self.game_state.history.iter().chunks(2)
                         .into_iter().enumerate().for_each(|(i,mut plies)|{

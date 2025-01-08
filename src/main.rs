@@ -70,6 +70,7 @@ async fn match_ui(assets : &Assets) -> MatchConfig{
                     match_config.gamers.iter_mut().enumerate().for_each(|(i,g)|{
                         ui.vertical(|ui|{
                             ui.set_min_width(200.0);
+                            ui.set_max_width(200.0);
                     
                             // ui.heading(format!("Player {}",i+1));
 
@@ -114,10 +115,10 @@ async fn match_ui(assets : &Assets) -> MatchConfig{
                     ui.add_space(140.0);
 
                     ui.vertical(|ui|{
-                        ui.add_space(300.0);
+                        ui.add_space(450.0);
                         ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
 
-                        ui.add_space(30.0);
+                        ui.add_space(40.0);
                         ui.horizontal(|ui|{
                             ui.style_mut().text_styles.insert(
                                 TextStyle::Button, 
@@ -208,6 +209,17 @@ async fn match_ui(assets : &Assets) -> MatchConfig{
                     });
             }
         }
+
+        
+        let dest_size = vec2(assets.title.width()/assets.title.height(),1.0) * 1.2;
+        draw_texture_ex(
+            assets.title, 
+            0.0, 
+            -0.75, 
+            WHITE, DrawTextureParams{
+                dest_size : Some(dest_size),
+                ..Default::default()
+            });
 
         time += get_frame_time();
         next_frame().await

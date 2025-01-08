@@ -39,7 +39,7 @@ impl Tile{
     }
 
     pub fn glyph(&self) -> char{
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZØÑΣ".chars().nth(self.code() as usize).unwrap()
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZØÑŁ".chars().nth(self.code() as usize).unwrap()
     }
 
     #[inline]

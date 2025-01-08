@@ -5,7 +5,7 @@ use macroquad::prelude::*;
 
 
 
-const FONT_PATH : &'static str = "gfx/Roboto-Regular.ttf";
+const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 
 
 
@@ -20,6 +20,7 @@ pub struct Assets{
     pub avatars : Texture2D,
     pub font : Font,
     pub font_bytes : Vec<u8>,
+    pub title : Texture2D,
 }
 
 impl Assets{
@@ -85,7 +86,8 @@ impl Assets{
             btn_letters : load_texture("gfx/btn_letters.png").await.unwrap(),
             avatars :  load_texture("gfx/avatars.png").await.unwrap(),
             font ,
-            font_bytes
+            font_bytes,
+            title : load_texture("gfx/title.png").await.unwrap(),
         }
     }
 
