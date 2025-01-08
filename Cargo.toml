@@ -8,7 +8,7 @@ edition = "2021"
 itertools = "0.13.0"
 egui = "0.21.0"
 egui-macroquad = "0.15"
-macroquad = { version = "0.3.23", default-features = false }
+macroquad = { version = "0.3.23", default-features = false, features=["audio"] }
 futures = "0.3.31"
 tokio = { version = "1.42.0", features = ["rt"] }
 lazy_static = "1.5.0"

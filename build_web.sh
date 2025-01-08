@@ -5,6 +5,7 @@ mkdir -p build/
 mkdir -p build/game/
 cp index.html build/game/index.html
 cp gfx -r build/game/gfx
+cp audio -r build/game/audio
 cp target/wasm32-unknown-unknown/release/hexstack.wasm build/game/hexstack.wasm
 
 cp build/game/hexstack.wasm .

@@ -7,6 +7,7 @@ use crate::ui::{Button, MqUi};
 use crate::{theme, EvalResult, Player, Ply, State, Tile};
 use egui::{Color32, Id, Margin};
 use itertools::Itertools;
+use macroquad::audio::{play_sound, play_sound_once, PlaySoundParams};
 use macroquad::prelude::*;
 
 use macroquad::experimental::coroutines::{start_coroutine,Coroutine};
@@ -533,6 +534,7 @@ impl<'a> GameApp<'a>{
         self.last_kill_tiles = vec![];
 
         
+        self.assets.piece_slide.play();
         self.app_state = GameStateMachine::Animating(MoveAnimState::new(ply,self.game_state.state_clone()));
 
         self.game_state.apply_move(ply);
@@ -651,11 +653,19 @@ impl<'a> GameApp<'a>{
             GameStateMachine::Animating(ref mut anim_state) => {
                 anim_state.tick();
                 if anim_state.time > MOVE_ANIM_DURATION{
+
+                    
                     self.last_kill_tiles = anim_state.kills.iter().map(|(t,_)|*t).collect();
 
                     if let Some(winner) = self.game_state.is_won(){
+                        play_sound_once(self.assets.mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
+                        if anim_state.kills.len()>0{
+                            play_sound(self.assets.capture,PlaySoundParams{
+                                looped : false, volume : 0.5
+                            });
+                        }
                         self.ask();
                     }
                 }

@@ -1,9 +1,32 @@
 use coroutines::start_coroutine;
 
-use macroquad::prelude::*;
+use macroquad::{audio::{load_sound, play_sound, play_sound_once, PlaySoundParams, Sound}, prelude::*};
+use ::rand::seq::SliceRandom;
 
+pub struct RandomClip{
+    clips : Vec<(String,Sound)>
+}
 
+impl RandomClip{
+    async fn load(paths : Vec<String>) -> Self{
+        let mut clips = vec![];
+        for path in paths{
+            clips.push((path.clone(),load_sound(&path).await.unwrap()));
+        };
 
+        RandomClip{clips}
+    }
+
+    pub fn play(&self){
+        let (name,clip) = self.clips.choose(&mut ::rand::thread_rng()).unwrap();
+        play_sound(*clip, PlaySoundParams{
+            looped : false,
+            volume : 0.5
+        });
+        println!("{}",name);
+        
+    }
+}
 
 const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 
@@ -21,6 +44,11 @@ pub struct Assets{
     pub font : Font,
     pub font_bytes : Vec<u8>,
     pub title : Texture2D,
+
+    pub piece_slide : RandomClip,
+
+    pub mate : Sound,
+    pub capture:Sound,
 }
 
 impl Assets{
@@ -88,6 +116,11 @@ impl Assets{
             font ,
             font_bytes,
             title : load_texture("gfx/title.png").await.unwrap(),
+
+            piece_slide : RandomClip::load([1,3,4,5,7,8].into_iter().map(|n|format!("audio/slide{}.ogg",n)).collect()).await,
+
+            mate : load_sound("audio/mate.ogg").await.unwrap(),
+            capture : load_sound("audio/bopp.ogg").await.unwrap(),
         }
     }
 
