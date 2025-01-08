@@ -3,14 +3,14 @@ use macroquad::prelude::*;
 use crate::assets::Assets;
 
 
-pub struct Ui<'a>{
+pub struct MqUi<'a>{
     pub assets : &'a Assets,
     pub camera : &'a Camera2D
 }
 
-impl<'a> Ui<'a>{
+impl<'a> MqUi<'a>{
     pub fn new(assets : &'a Assets, camera : &'a Camera2D)->Self{
-        Ui { assets, camera }
+        MqUi { assets, camera }
     }
 }
 
@@ -27,7 +27,7 @@ impl Button{
     }
 
 
-    pub fn process(&mut self, ui : &Ui) -> bool{
+    pub fn process(&mut self, ui : &MqUi) -> bool{
         let mouse_px = mouse_position().into();
         let mouse_world = ui.camera.screen_to_world(mouse_px);
 

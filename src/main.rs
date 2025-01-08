@@ -1,6 +1,4 @@
-use std::fmt::format;
-
-use egui::{Color32, FontFamily, FontId, Margin, TextStyle};
+use egui::{Align, Color32, Direction, FontFamily, FontId, Layout, Margin, TextStyle};
 #[allow(unused_imports)]
 use hexstack::engine_debug;
 #[allow(unused_imports)]
@@ -9,13 +7,16 @@ use hexstack::engine_debug::window_conf as dbg_window_conf;
 use hexstack::game;
 #[allow(unused_imports)]
 use hexstack::game::window_conf as game_window_conf;
-use hexstack::game::GamerSpec;
-use hexstack::Player;
-use macroquad::window::{next_frame, screen_height};
+use hexstack::game::{GamerSpec, MatchConfig};
+use hexstack::theme::{color_to_color32, set_theme};
+use hexstack::{theme, Player};
+use macroquad::window::{clear_background, next_frame, screen_height};
 
 use hexstack::assets::Assets;
+use macroquad::prelude::*;
 
-async fn match_ui() -> ([GamerSpec;2],Option<Player>){
+
+async fn match_ui(assets : &Assets) -> MatchConfig{
     let choices = [
         GamerSpec::Human,
         GamerSpec::Gibberish,
@@ -26,54 +27,53 @@ async fn match_ui() -> ([GamerSpec;2],Option<Player>){
         GamerSpec::Beastly
     ];
 
-    let mut gamers = [GamerSpec::Human, GamerSpec::Noob];
+
+    let mut match_config = MatchConfig{
+        gamers : [GamerSpec::Human, GamerSpec::Noob],
+        gamer_one_color : None,
+        allow_takeback : true
+    };
+
+
     let mut break_out = None;
 
-    let mut p1_color = None;
-
+    let mut time : f32 = 0.0;
 
 
     loop {
+        clear_background(theme::BG_COLOR);
+
         egui_macroquad::ui(|egui_ctx|{
 
             egui_ctx.set_pixels_per_point(screen_height() / 720.0);
 
             egui_ctx.set_visuals(egui::Visuals::light());
 
+            
+
             egui::CentralPanel::default()
             .frame(egui::Frame{
-                fill : Color32::WHITE,
+                fill : color_to_color32(theme::BG_COLOR),
                 inner_margin : Margin::symmetric(160.0,80.0),
                 ..Default::default()
             })
             .show(egui_ctx,|ui|{
-                ui.style_mut().text_styles.insert(
-                    TextStyle::Heading, 
-                    FontId { 
-                        size: 32.0, 
-                        family: FontFamily::Proportional 
-                    });
-                ui.style_mut().text_styles.insert(
-                    TextStyle::Body, 
-                    FontId { 
-                        size: 16.0, 
-                        family: FontFamily::Proportional 
-                    });
-                ui.style_mut().text_styles.insert(
-                    TextStyle::Button, 
-                    FontId { 
-                        size: 16.0, 
-                        family: FontFamily::Proportional 
-                    });
+                set_theme(ui);
                 
-                ui.horizontal(|ui|{
-                    gamers.iter_mut().enumerate().for_each(|(i,g)|{
+                let layout = Layout{
+                    main_dir : Direction::LeftToRight,
+                    main_align : Align::Center,
+                    ..Default::default()
+                };
+
+                ui.with_layout(layout,|ui|{
+                    match_config.gamers.iter_mut().enumerate().for_each(|(i,g)|{
                         ui.vertical(|ui|{
                             ui.set_min_width(200.0);
                     
-                            ui.heading(format!("Player {}",i+1));
+                            // ui.heading(format!("Player {}",i+1));
 
-                            ui.add_space(20.0);
+                            ui.add_space(200.0);
         
                             ui.vertical(|ui|{
                                 choices.iter().for_each(|c|{
@@ -90,29 +90,48 @@ async fn match_ui() -> ([GamerSpec;2],Option<Player>){
 
                             match i{
                                 0 => {
-                                    ui.radio_value(&mut p1_color, None, "Random");
-                                    ui.radio_value(&mut p1_color, Some(Player::White), "White");
-                                    ui.radio_value(&mut p1_color, Some(Player::Black), "Black");
+                                    ui.radio_value(&mut match_config.gamer_one_color, None, "Random");
+                                    ui.radio_value(&mut match_config.gamer_one_color, Some(Player::White), "White");
+                                    ui.radio_value(&mut match_config.gamer_one_color, Some(Player::Black), "Black");
                                 },
                                 1 => {
-                                    ui.label(if let Some(p1_col) = p1_color {
+                                    ui.label(if let Some(p1_col) = match_config.gamer_one_color {
                                         match p1_col.flip() {
                                             Player::Black => "Black",
                                             Player::White => "White"
                                         }
                                     } else {"Random"});
                                 },
-                                _ => unreachable!()
+                                _ => unreachable!("Player past index 1")
                             }
                         });
     
                     });
 
+
                     ui.separator();
 
-                    if ui.button("Start Game").clicked(){
-                        break_out = Some(());
-                    }
+                    ui.add_space(140.0);
+
+                    ui.vertical(|ui|{
+                        ui.add_space(300.0);
+                        ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
+
+                        ui.add_space(30.0);
+                        ui.horizontal(|ui|{
+                            ui.style_mut().text_styles.insert(
+                                TextStyle::Button, 
+                                FontId { 
+                                    size: 30.0, 
+                                    family: FontFamily::Proportional 
+                                });
+                            if ui.button("Start Match").clicked(){
+                                break_out = Some(());
+                            }
+                        })
+                        
+                    });
+                    
 
                 });
                 
@@ -124,19 +143,92 @@ async fn match_ui() -> ([GamerSpec;2],Option<Player>){
         if let Some(()) = break_out{
             break;
         }
+
+        set_camera(&Camera2D{
+            target:vec2(0.0,0.0),
+            zoom : vec2(screen_height()/screen_width(),-1.0),
+            ..Default::default()
+        });
+
+        for pid in [0,1]{
+            let x = -1.2 + (pid as f32)*0.6;
+            let y = -0.5;
+
+            let size = 0.4*Vec2::ONE;
+            let mut base_color = match_config.gamer_one_color.unwrap_or(
+                Player::White
+            );
+            if pid > 0 {base_color = base_color.flip()};
+
+            let av_offset = if match_config.gamers[pid] == GamerSpec::Human {0} else {1};
+
+            let (avatar_tex,src) = assets.get_avatar(
+                base_color, 
+                av_offset);
+
+            if let Some(..) = match_config.gamer_one_color{
+                draw_texture_ex(avatar_tex, 
+                    x-size.x*0.5, 
+                    y-size.y*0.5, 
+                    WHITE, 
+                    DrawTextureParams{
+                        dest_size : Some(size),
+                        source : Some(src),
+                        ..Default::default()
+                    });
+            } else {
+                let mut half_sz = size;
+                half_sz.x *= 0.5;
+                let mut left_src = src;
+                left_src.w *= 0.5;
+                draw_texture_ex(avatar_tex, 
+                    x-size.x*0.5, 
+                    y-size.y*0.5, 
+                    WHITE, 
+                    DrawTextureParams{
+                        dest_size : Some(half_sz),
+                        source : Some(left_src),
+                        ..Default::default()
+                    });
+
+                let (_,mut right_src) = assets.get_avatar(
+                    base_color.flip(), 
+                    av_offset);
+                right_src.w *= 0.5;
+                right_src.x += right_src.w;
+
+                draw_texture_ex(avatar_tex, 
+                    x, 
+                    y-size.y*0.5, 
+                    WHITE, 
+                    DrawTextureParams{
+                        dest_size : Some(half_sz),
+                        source : Some(right_src),
+                        ..Default::default()
+                    });
+            }
+        }
+
+        time += get_frame_time();
         next_frame().await
     };
 
-    (gamers,p1_color)
+    match_config
 }
 
 #[macroquad::main(game_window_conf)]
 async fn main(){
+    
+
 
     let assets : Assets = Assets::loading_screen().await;
 
+    egui_macroquad::cfg(|egui_ctx |{
+        theme::set_fonts(egui_ctx, &assets);
+    });
+
     loop{
-        let (gamers,p1_color) = match_ui().await;    
-        game::main(&assets,gamers, p1_color).await
+        let match_config = match_ui(&assets).await;    
+        game::main(&assets,match_config).await
     }
 }

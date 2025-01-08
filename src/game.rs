@@ -2,8 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::assets::Assets;
 use crate::board::Piece;
-use crate::ui::{Button, Ui};
-use crate::{EvalResult, Player, Ply, State, Tile};
+use crate::theme::set_theme;
+use crate::ui::{Button, MqUi};
+use crate::{theme, EvalResult, Player, Ply, State, Tile};
+use egui::{Color32, Id, Margin};
 use itertools::Itertools;
 use macroquad::prelude::*;
 
@@ -34,7 +36,7 @@ impl GamerSpec{
 
     pub fn texts(&self) -> (&str,&str){
         match self{
-            GamerSpec::Human => ("Human", "Human player (mouse)."),
+            GamerSpec::Human => ("Human", "Human player."),
             GamerSpec::Gibberish => ("Gibberish", "Makes random moves."),
             GamerSpec::Noob => ("Noob", "Poor player."),
             GamerSpec::Decent => ("Decent", "Solid player."),
@@ -44,9 +46,9 @@ impl GamerSpec{
         }
     }
 
-    fn make(self, assets : &Assets) -> Box<dyn Gamer>{
+    fn make(self, assets : &Assets, allow_takeback : bool) -> Box<dyn Gamer>{
         match self{
-            GamerSpec::Human => Human::new_boxed(assets),
+            GamerSpec::Human => Human::new_boxed(assets, allow_takeback),
             GamerSpec::Gibberish => Bot::new_boxed(0,0.0),
             GamerSpec::Noob => Bot::new_boxed(1, 0.2),
             GamerSpec::Decent => Bot::new_boxed(2, 0.2),
@@ -55,6 +57,12 @@ impl GamerSpec{
             GamerSpec::Beastly => Bot::new_boxed(6, 0.0)
         }
     }
+}
+
+pub struct MatchConfig{
+    pub gamers : [GamerSpec;2],
+    pub gamer_one_color : Option<Player>,
+    pub allow_takeback : bool,
 }
 
 
@@ -111,6 +119,7 @@ impl FatGameState{
         
     }
 
+    #[allow(dead_code)]
     fn draw_history(&self, font : Font){
         self.history.iter().chunks(2).into_iter().enumerate()
         .for_each(|(i,mut plies)|{
@@ -167,7 +176,7 @@ enum Decision{
 trait Gamer{
     fn assign_puzzle(&mut self, state : State);
     fn poll_answer(&mut self) -> Option<Decision>;
-    fn process(&mut self, ui : &Ui, as_player : Player);
+    fn process(&mut self, ui : &MqUi, as_player : Player);
 
     fn avatar_offset(&self) -> usize;
 }
@@ -220,7 +229,7 @@ impl Gamer for Bot{
         answer.map(|rep|Decision::Move(rep))
     }
 
-    fn process(&mut self, _ui : &Ui, _as_player : Player){
+    fn process(&mut self, _ui : &MqUi, _as_player : Player){
         // let (x,y) = as_player.ui_info_pos().into();
 
         // let tag = format!("Bot {} {}",
@@ -255,11 +264,13 @@ struct Human{
     answer : Option<Decision>,
     piece_tex : Texture2D,
 
+    allow_takeback : bool,
+
     btn_takeback : Button,
 }
 
 impl Human{
-    fn new(assets : & Assets)->Self{
+    fn new(assets : & Assets, allow_takeback : bool)->Self{
         Human { 
             selected_tile: None, 
             puzzle_state: None,
@@ -268,14 +279,16 @@ impl Human{
             piece_tex : assets.pieces,
             btn_takeback : Button::new(
                 assets.btn_takeback,
-                Rect::new(7.0,1.0,1.0,1.0),
+                Rect::new(7.0,0.0,1.0,1.0),
                 "Undo Move".to_string()
             ),
+
+            allow_takeback,
          }
     }
 
-    fn new_boxed(assets : &Assets)->Box<Self>{
-        Box::new(Self::new(assets ))
+    fn new_boxed(assets : &Assets, allow_takeback : bool)->Box<Self>{
+        Box::new(Self::new(assets , allow_takeback))
     }
 
     fn reset(&mut self){
@@ -310,22 +323,13 @@ impl Gamer for Human{
         
     }
 
-    fn process(&mut self, ui : &Ui, as_player : Player) {
-        // let (x,y) = as_player.ui_info_pos().into();
-        // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
-        // draw_text_ex(
-        //     "You (Human?)",
-        //     x-3.0,
-        //     y,
-        //     TextParams{font,font_scale,font_scale_aspect,font_size,
-        //         color : Color::from_hex(0x111111),
-        //         ..Default::default()
-        //     }
-        // );
+    fn process(&mut self, ui : &MqUi, as_player : Player) {
 
         if let Some(av_moves) = &self.available_moves{
-            if self.btn_takeback.process(&ui){
-                self.answer = Some(Decision::TakeBack);
+            if self.allow_takeback{
+                if self.btn_takeback.process(&ui){
+                    self.answer = Some(Decision::TakeBack);
+                }
             }
 
             if let Some(selected) = self.selected_tile{
@@ -419,7 +423,7 @@ struct GameApp<'a>{
     game_state : FatGameState,
     
     piece_tex : Texture2D,
-    avatars_tex : Texture2D,
+    
 
 
     gamers : HashMap<Player, Box<dyn Gamer>>,
@@ -434,8 +438,9 @@ struct GameApp<'a>{
 
     smoothed_to_play : f32,
 
-
-    // btn_takeback : Button,
+    tile_letters_toggle : bool,
+    
+    btn_tile_letters : Button,
     btn_toggle_lines : Button,
     btn_exit : Button,
     
@@ -444,14 +449,13 @@ struct GameApp<'a>{
 impl<'a> GameApp<'a>{
     async fn new(
             assets : &'a Assets,
-            gamers_spec : [GamerSpec;2],
-            first_gamer_color : Option<Player>
-        )->GameApp{
+            match_config : MatchConfig
+        )->GameApp<'a>{
         
 
         let mut gamers :HashMap<Player, Box<dyn Gamer>> = HashMap::new();
         
-        let first_gamer_color = if let Some(color) = first_gamer_color{
+        let first_gamer_color = if let Some(color) = match_config.gamer_one_color{
             color
         } else {
             if ::rand::thread_rng().gen::<bool>() {
@@ -463,8 +467,8 @@ impl<'a> GameApp<'a>{
         
         let piece_tex = assets.pieces;
         
-        let [gm0,gm1] = gamers_spec.map(
-            |s|s.make(assets));
+        let [gm0,gm1] = match_config.gamers.map(
+            |s|s.make(assets, match_config.allow_takeback));
 
         
         gamers.insert(first_gamer_color, gm0);
@@ -481,7 +485,7 @@ impl<'a> GameApp<'a>{
             game_state : FatGameState::setup(),
 
             piece_tex,
-            avatars_tex : assets.avatars,
+            
 
 
             gamers ,
@@ -492,10 +496,15 @@ impl<'a> GameApp<'a>{
             last_kill_tiles : vec![],
             attack_patterns_alpha : 0.0,
             attack_patterns_toggle : false,
+            tile_letters_toggle : false,
 
             smoothed_to_play : 0.0,
 
-            
+            btn_tile_letters : Button::new(
+                assets.btn_letters,
+                Rect::new(7.0,1.0,1.0,1.0),
+                "Show Tiles".to_string()
+            ),
 
             btn_toggle_lines : Button::new(
                 assets.btn_lines,
@@ -560,7 +569,54 @@ impl<'a> GameApp<'a>{
             ..Default::default()
         };
         set_camera(&cam);
-        let ui = Ui::new(self.assets, &cam);
+        let mqui = MqUi::new(self.assets, &cam);
+
+
+
+        egui_macroquad::ui(|egui_ctx| {
+            egui_ctx.set_visuals(egui::Visuals::light());
+            egui_ctx.set_pixels_per_point(screen_height() / 720.0);
+            egui::SidePanel::new(egui::panel::Side::Left,Id::new("game_panel"))
+            .frame(egui::Frame{
+                fill: Color32::TRANSPARENT,
+                inner_margin : Margin::same(20.0),
+                ..Default::default()
+            })
+            .show(egui_ctx, |ui| {
+                set_theme(ui);
+                
+
+                egui::ScrollArea::vertical()
+                .max_width(300.0)
+                .id_source("history")
+                .show(ui,|ui|{
+                    ui.vertical(|ui|{
+                        self.game_state.history.iter().chunks(2)
+                        .into_iter().enumerate().for_each(|(i,mut plies)|{
+                            let move_num = i+1;
+                            let (_,p1) = plies.next().unwrap();
+        
+                            
+                            ui.horizontal(|ui|{
+                                ui.label(egui::RichText::new(format!("{}.",move_num)).strong());
+                                ui.label(format!("{}",p1));
+            
+                                if let Some((_,p2)) = plies.next() {
+                                    ui.label(format!("{}",p2));
+                                };
+                                
+                            });
+                            
+                            
+                        });
+                        
+                        ui.label("").scroll_to_me(None);
+                    });
+                });
+            });
+        });
+        egui_macroquad::draw();
+
 
         match &mut self.app_state{
             GameStateMachine::Setup => {
@@ -672,14 +728,18 @@ impl<'a> GameApp<'a>{
             }
         };
 
-        self.game_state.draw_history(self.assets.font);
+        // self.game_state.draw_history(self.assets.font);
+
+        if self.tile_letters_toggle{
+            Tile::draw_tile_numbers(self.assets.font, false);
+        }
 
         for player in [
                 self.game_state.to_play(),
                 self.game_state.to_play().flip()
             ]{
             let gamer = self.gamers.get_mut(&player).unwrap();
-            gamer.process(&ui,player);
+            gamer.process(&mqui,player);
 
 
             let strength = match player{
@@ -691,17 +751,10 @@ impl<'a> GameApp<'a>{
             let size = vec2(2.0,2.0).lerp(vec2(3.0,3.0), strength);
             let pos = player.ui_info_pos() - size*0.5;
 
-            let avatar_src = Rect::new(
-                (128 * gamer.avatar_offset()) as f32,
-                (128 * match player {
-                    Player::Black => 1,
-                    Player::White => 0
-                }) as f32,
-                128.0,128.0
-            );
+            let (avatar_tex,avatar_src) = self.assets.get_avatar(player, gamer.avatar_offset());
 
             draw_texture_ex(
-                self.avatars_tex, 
+                avatar_tex, 
                 pos.x, 
                 pos.y, 
                 Color::from_vec(vec4(1.0,1.0,1.0,strength*0.5+0.5)), 
@@ -715,11 +768,14 @@ impl<'a> GameApp<'a>{
 
 
         
-        
-        if self.btn_toggle_lines.process(&ui){
+        if self.btn_tile_letters.process(&mqui){
+            self.tile_letters_toggle ^= true;
+        }
+
+        if self.btn_toggle_lines.process(&mqui){
             self.attack_patterns_toggle ^= true;
         };
-        if self.btn_exit.process(&ui){
+        if self.btn_exit.process(&mqui){
             return true;
         };
 
@@ -738,15 +794,14 @@ pub fn window_conf()->Conf{
 }
 
 
-pub async fn main(assets : &Assets,gamers : [GamerSpec;2], first_gamer_color : Option<Player>) {
+pub async fn main(assets : &Assets,match_config : MatchConfig) {
     let mut state = GameApp::new(
         assets,
-        gamers,
-        first_gamer_color,
+        match_config
     ).await;
 
     loop{
-        clear_background(Color::from_hex(0xeeeeee));        
+        clear_background(theme::BG_COLOR);        
         
         let quit = state.process().await; 
         if quit{

@@ -38,6 +38,10 @@ impl Tile{
         shift + uy
     }
 
+    pub fn glyph(&self) -> char{
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZØÑΣ".chars().nth(self.code() as usize).unwrap()
+    }
+
     #[inline]
     pub const fn from_code(code : u8) -> Tile{
         let (ux,shift) = match code{
@@ -284,19 +288,22 @@ impl Tile{
     pub fn draw_tile_numbers(font : Font, flip_board : bool){
         Self::all_tiles().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
-            let (tx,ty) = (x-0.24, y+0.8);
+            let (x,y) = (x,y+0.4);
 
-            let tcol = t.tile_color();
-            draw_rectangle(tx-0.03, ty-0.4, 0.5, 0.5, tcol);
+            let mut tcol = t.tile_color();
+            tcol.a = 0.8;
+            // draw_rectangle(tx-0.03, ty-0.4, 0.5, 0.5, tcol);
+            draw_circle(x, y, 0.3, tcol);
 
-            
-            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.4);
-                draw_text_ex(&format!("{}",t),tx,ty , TextParams{
-                    font,
-                    font_size, font_scale, font_scale_aspect,
-                    color : Color::from_vec(tcol.to_vec() * 0.5),
-                    ..Default::default()
-                });
+            let text = &format!("{}",t);
+            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.5);
+            let center = get_text_center(text, Some(font), font_size, font_scale, 0.0);
+            draw_text_ex(text,x-center.x,y-center.y, TextParams{
+                font,
+                font_size, font_scale, font_scale_aspect,
+                color : Color::from_rgba(0x11, 0x11, 0x11, 160),
+                ..Default::default()
+            });
 
         });
     }
@@ -388,7 +395,7 @@ pub const fn coord_to_char(v : i8) -> char{
 
 impl Display for Tile{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{}",self.code())
+        write!(f,"{}",self.glyph())
     }
 }
 
@@ -609,7 +616,7 @@ impl Ply{
 
 impl Display for Ply{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{}->{}",self.from_tile,self.to_tile)
+        write!(f,"{}{}",self.from_tile,self.to_tile)
         
     }
 }

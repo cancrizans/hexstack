@@ -1,12 +1,25 @@
 use coroutines::start_coroutine;
+
 use macroquad::prelude::*;
+
+
+
+
+const FONT_PATH : &'static str = "gfx/Roboto-Regular.ttf";
+
+
+
+use crate::{theme, Player};
+
 pub struct Assets{
     pub pieces : Texture2D,
     pub btn_takeback : Texture2D,
     pub btn_exit : Texture2D,
     pub btn_lines : Texture2D,
+    pub btn_letters : Texture2D,
     pub avatars : Texture2D,
-    pub font : Font
+    pub font : Font,
+    pub font_bytes : Vec<u8>,
 }
 
 impl Assets{
@@ -17,9 +30,9 @@ impl Assets{
 
         
         loop {
-            clear_background(WHITE);
+            clear_background(theme::BG_COLOR);
 
-            if time > 0.5{
+            if time > 0.2{
                 if let Some(assets) = load_co.retrieve(){
                     return assets;
                 }
@@ -58,16 +71,35 @@ impl Assets{
 
 
     pub async fn load()->Self{
-        let font = load_ttf_font("gfx/Roboto-Regular.ttf").await.unwrap();
+        let font = load_ttf_font(FONT_PATH).await.unwrap();
         font.set_filter(FilterMode::Linear);
+
+        let font_bytes = macroquad::file::load_file(&FONT_PATH)
+            .await.unwrap();
 
         Assets{
             pieces : load_texture("gfx/pieces_sm.png").await.unwrap(),
             btn_takeback : load_texture("gfx/btn_takeback.png").await.unwrap(),
             btn_exit : load_texture("gfx/btn_exit.png").await.unwrap(),
             btn_lines : load_texture("gfx/btn_lines.png").await.unwrap(),
+            btn_letters : load_texture("gfx/btn_letters.png").await.unwrap(),
             avatars :  load_texture("gfx/avatars.png").await.unwrap(),
             font ,
+            font_bytes
         }
+    }
+
+    pub fn get_avatar(&self, player : Player, avatar_offset : usize) -> (Texture2D,Rect){
+        let avatar_src = Rect::new(
+            (128 * avatar_offset) as f32,
+            (128 * match player {
+                Player::Black => 1,
+                Player::White => 0
+            }) as f32,
+            128.0,128.0
+        );
+
+
+        (self.avatars,avatar_src)
     }
 }

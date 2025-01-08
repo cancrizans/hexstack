@@ -18,7 +18,7 @@ pub mod engine_debug;
 pub mod game;
 pub mod ui;
 pub mod assets;
-
+pub mod theme;
 
 
 #[derive(Copy,Clone, PartialEq, PartialOrd)]
