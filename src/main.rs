@@ -1,4 +1,4 @@
-use egui::{Align, Color32, Direction, FontFamily, FontId, Layout, Margin, TextStyle};
+use egui::{Align, Direction, FontFamily, FontId, Layout, Margin, TextStyle};
 #[allow(unused_imports)]
 use hexstack::engine_debug;
 #[allow(unused_imports)]
@@ -37,7 +37,7 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
 
     let mut break_out = None;
 
-    let mut time : f32 = 0.0;
+    let mut _time : f32 = 0.0;
 
 
     loop {
@@ -221,7 +221,15 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
                 ..Default::default()
             });
 
-        time += get_frame_time();
+        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.05);
+        draw_text_ex(&format!("version {}",env!("CARGO_PKG_VERSION")),
+            1.3,0.9,TextParams { 
+                font: assets.font, font_size, font_scale, font_scale_aspect, color:Color::from_hex(0x111111),
+                ..Default::default()
+            },
+        );
+
+        _time += get_frame_time();
         next_frame().await
     };
 

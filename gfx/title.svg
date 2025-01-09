@@ -26,9 +26,9 @@
      inkscape:pagecheckerboard="true"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     inkscape:zoom="2.8649134"
-     inkscape:cx="-1.7452535"
-     inkscape:cy="76.965678"
+     inkscape:zoom="8.1031988"
+     inkscape:cx="71.576672"
+     inkscape:cy="88.051647"
      inkscape:window-width="2560"
      inkscape:window-height="1351"
      inkscape:window-x="-9"
@@ -165,5 +165,16 @@
            id="path18" />
       </g>
     </g>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:300;font-stretch:normal;font-size:1.96671px;font-family:Lexend;-inkscape-font-specification:'Lexend Light';fill:#111111;stroke:none;stroke-width:0.106388;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:100"
+       x="39.145008"
+       y="82.490631"
+       id="text3"><tspan
+         sodipodi:role="line"
+         id="tspan3"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:Lexend;-inkscape-font-specification:Lexend;stroke:none;stroke-width:0.106389"
+         x="39.145008"
+         y="82.490631">(name not definitive)</tspan></text>
   </g>
 </svg>

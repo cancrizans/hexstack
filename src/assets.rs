@@ -1,6 +1,6 @@
 use coroutines::start_coroutine;
 
-use macroquad::{audio::{load_sound, play_sound, play_sound_once, PlaySoundParams, Sound}, prelude::*};
+use macroquad::{audio::{load_sound, play_sound, PlaySoundParams, Sound}, prelude::*};
 use ::rand::seq::SliceRandom;
 
 pub struct RandomClip{
@@ -18,7 +18,7 @@ impl RandomClip{
     }
 
     pub fn play(&self){
-        let (name,clip) = self.clips.choose(&mut ::rand::thread_rng()).unwrap();
+        let (_,clip) = self.clips.choose(&mut ::rand::thread_rng()).unwrap();
         play_sound(*clip, PlaySoundParams{
             looped : false,
             volume : 0.5

@@ -34,8 +34,8 @@ pub fn draw_arrow_bowed(
     end : Vec2, 
     color : Color, 
     thickness : f32, 
-    head_length : f32, 
-    head_width : f32,
+    _head_length : f32, 
+    _head_width : f32,
     bowing : f32
 ){
 

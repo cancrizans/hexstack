@@ -1,10 +1,10 @@
 
 
-use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, PieceType, Player, State, Tall, Tile};
+use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, State, Tall, Tile};
+use hexstack::PieceType;
 use macroquad::prelude::*;
 
 struct Illustration{
-    zoom : f32,
     name : String,
 
     tex : RenderTarget
@@ -22,7 +22,7 @@ impl Illustration{
             ..Default::default()
         });
 
-        Illustration { zoom, name, tex}
+        Illustration { name, tex}
     } 
 
     async fn dump(self){

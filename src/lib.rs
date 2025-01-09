@@ -5,7 +5,6 @@ use std::{collections::HashMap, fmt::Display};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use itertools::Itertools;
 use macroquad::prelude::*;
 
 pub mod arrows;
