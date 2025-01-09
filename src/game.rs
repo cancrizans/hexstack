@@ -147,6 +147,8 @@ trait Gamer{
     fn process(&mut self, ui : &MqUi, as_player : Player);
 
     fn avatar_offset(&self) -> usize;
+
+    fn allows_takebacks(&self) -> bool;
 }
 
 
@@ -174,6 +176,9 @@ impl Bot{
 }
 
 impl Gamer for Bot{
+    fn allows_takebacks(&self) -> bool {
+        false
+    }
     fn assign_puzzle(&mut self, state : State) {
         let mut depth = self.depth;
 
@@ -245,11 +250,7 @@ impl Human{
             available_moves : None,
             answer : None,
             piece_tex : assets.pieces,
-            btn_takeback : Button::new(
-                assets.btn_takeback,
-                Rect::new(7.0,0.0,1.0,1.0),
-                "Undo Move".to_string()
-            ),
+            btn_takeback : make_takeback_button(assets),
 
             allow_takeback,
          }
@@ -274,6 +275,10 @@ impl Human{
 }
 
 impl Gamer for Human{
+    fn allows_takebacks(&self) -> bool {
+        self.allow_takeback
+    }
+
     fn assign_puzzle(&mut self, state : State) {
         self.reset();
         self.available_moves = Some(HashSet::from_iter(state.valid_moves().into_iter()));
@@ -409,10 +414,19 @@ struct GameApp<'a>{
 
     tile_letters_toggle : bool,
     
+    btn_mate_takeback : Button,
     btn_tile_letters : Button,
     btn_toggle_lines : Button,
     btn_exit : Button,
     
+}
+
+fn make_takeback_button(assets : &Assets) -> Button{
+    Button::new(
+        assets.btn_takeback,
+        Rect::new(7.0,0.0,1.0,1.0),
+        "Undo Move".to_string()
+    )
 }
 
 impl<'a> GameApp<'a>{
@@ -469,6 +483,7 @@ impl<'a> GameApp<'a>{
 
             smoothed_to_play : 0.5,
 
+            btn_mate_takeback : make_takeback_button(assets),
             btn_tile_letters : Button::new(
                 assets.btn_letters,
                 Rect::new(7.0,1.0,1.0,1.0),
@@ -528,8 +543,13 @@ impl<'a> GameApp<'a>{
             (if self.attack_patterns_toggle {1.0} else {0.0}) - self.attack_patterns_alpha
         ) * delta_t;
 
+        let target_smooth_to_play = match self.app_state{
+            GameStateMachine::Won { .. } => 0.5,
+            _ => match self.game_state.to_play() {Player::Black => 1.0, Player::White => 0.0}
+        };
+
         self.smoothed_to_play += 6.0 * (
-            (match self.game_state.to_play() {Player::Black => 1.0, Player::White => 0.0}) - self.smoothed_to_play
+            (target_smooth_to_play) - self.smoothed_to_play
         ) * delta_t;
 
 
@@ -730,10 +750,17 @@ impl<'a> GameApp<'a>{
             gamer.process(&mqui,player);
 
 
-            let strength = match player{
-                Player::Black => self.smoothed_to_play,
-                Player::White => 1.0 - self.smoothed_to_play
-            };
+            let strength = match self.app_state{
+                GameStateMachine::Won { winner } 
+                    => if winner == player {1.0} else {0.5},
+                _ => 
+                match player{
+                    Player::Black => self.smoothed_to_play,
+                    Player::White => 1.0 - self.smoothed_to_play
+                }
+            }.clamp(0.0, 1.0);
+
+
             
 
             let size = vec2(2.0,2.0).lerp(vec2(3.0,3.0), strength);
@@ -767,6 +794,8 @@ impl<'a> GameApp<'a>{
             return true;
         };
 
+        
+
 
 
         match self.app_state{
@@ -775,6 +804,17 @@ impl<'a> GameApp<'a>{
                 col.a = (1.0 - time/SETUP_TIME).clamp(0.0, 1.0).powf(1.2);
                 draw_rectangle(-12.0, -12.0, 24.0, 24.0, col);
             },
+
+            GameStateMachine::Won { winner } => {
+                let loser = winner.flip();
+                let loser = self.gamers.get(&loser).unwrap();
+
+                if loser.allows_takebacks() {
+                    if self.btn_mate_takeback.process(&mqui){
+                        self.undo_moves(2);
+                    }
+                }
+            }
             _=>{}
         }
 
