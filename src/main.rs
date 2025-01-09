@@ -126,7 +126,11 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
                                     size: 30.0, 
                                     family: FontFamily::Proportional 
                                 });
-                            if ui.button("Start Match").clicked(){
+                            let start_button = ui.add_sized(
+                                [200.0,50.0],
+                                egui::Button::new("Start Match")
+                            );
+                            if start_button.clicked(){
                                 break_out = Some(());
                             }
                         })
