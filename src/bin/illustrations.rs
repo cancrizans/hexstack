@@ -28,15 +28,16 @@ impl Illustration{
     async fn dump(self){
         next_frame().await;
         let img = self.tex.texture.get_texture_data();
-        let path_png = format!("diags/{}.png",self.name);
-        img.export_png(&path_png);
+        let mut path_temp = std::env::temp_dir();
+        path_temp.push("tmpdiag.png");
+        img.export_png(&path_temp.to_str().unwrap());
 
-        let path_webp = format!("diags/{}.webp",self.name);
+        let path_final = format!("diags/{}.png",self.name);
         std::process::Command::new("magick")
             .arg("convert")
-            .arg(path_png)
+            .arg(path_temp)
             .arg("-resize").arg("50%")
-            .arg(path_webp)
+            .arg(path_final)
             .status().unwrap();
             
     }
@@ -166,9 +167,9 @@ async fn main(){
 
     i.dump().await;
 
-    std::process::Command::new("rm")
-        .arg("diags/*.png")
-        .spawn()
-        .unwrap();
+    // std::process::Command::new("rm")
+    //     .arg("diags/*.png")
+    //     .spawn()
+    //     .unwrap();
         
 }
