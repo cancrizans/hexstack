@@ -118,7 +118,7 @@ async fn main(){
                 let disp : Vec2 = e-s;
 
                 draw_arrow(
-                    s + 0.6* disp.normalize(),
+                    s + 0.7* disp.normalize(),
                     e,
                     Color::from_hex(0x111111),
                     0.10,
