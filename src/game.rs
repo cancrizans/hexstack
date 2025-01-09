@@ -424,7 +424,7 @@ struct GameApp<'a>{
 fn make_takeback_button(assets : &Assets) -> Button{
     Button::new(
         assets.btn_takeback,
-        Rect::new(7.0,0.0,1.0,1.0),
+        Rect::new(6.5,1.0,1.0,1.0),
         "Undo Move".to_string()
     )
 }
@@ -486,20 +486,20 @@ impl<'a> GameApp<'a>{
             btn_mate_takeback : make_takeback_button(assets),
             btn_tile_letters : Button::new(
                 assets.btn_letters,
-                Rect::new(7.0,1.0,1.0,1.0),
+                Rect::new(6.5,2.0,1.0,1.0),
                 "Show Tiles".to_string()
             ),
 
             btn_toggle_lines : Button::new(
                 assets.btn_lines,
-                Rect::new(7.0,2.0,1.0,1.0),
+                Rect::new(6.5,3.0,1.0,1.0),
                 "Show Patterns".to_string()
             ),
 
             btn_exit : Button::new(
                 assets.btn_exit,
-                Rect::new(7.0,3.0,1.0,1.0),
-                "Exit".to_string()
+                Rect::new(8.0,-6.0,1.0,1.0),
+                "Quit".to_string()
             ),
         };
 
@@ -555,7 +555,7 @@ impl<'a> GameApp<'a>{
 
         let cam = Camera2D{
             target : vec2(0.0,0.0),
-            zoom : 0.13*vec2(screen_height()/screen_width(),-1.0),
+            zoom : 0.15*vec2(screen_height()/screen_width(),-1.0),
             ..Default::default()
         };
         set_camera(&cam);

@@ -54,7 +54,7 @@ impl Button{
             });
 
         if self.alpha > 0.001{
-            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.6);
+            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.55);
             draw_text_ex(
                 &self.text,
                 self.rect.x + self.rect.w,

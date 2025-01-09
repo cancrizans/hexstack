@@ -4,7 +4,7 @@
 
 A board of 29 hexagonal tiles is setup as follows.
 
-![](diags/board.webp)
+![](diags/board.png)
 
 White, who moves first, starts on the right side and moves to the left. For white pieces, the forward direction is left.
 
@@ -14,7 +14,7 @@ The rightmost tile is White's **house**, the leftmost tile is Black's house.
 
 The pieces are laid out like this
 
-![](diags/board_setup.webp)
+![](diags/board_setup.png)
 
 It is important that White's Star is on a dark tile, and Black's is on a light tile.
 
@@ -24,8 +24,8 @@ All pieces move and attack according to some specific pattern. When they move mo
 
 ### Flats
 
-![](diags/mov_flat_white.webp)
-![](diags/mov_flat_black.webp)
+![](diags/mov_flat_white.png)
+![](diags/mov_flat_black.png)
 
 **Flats** move one tile forward, or one tile forward-sideways.
 
@@ -33,15 +33,15 @@ When a flat reaches the opponent's house, the player immediately wins.
 
 ### Arm
 
-![](diags/mov_arm_white.webp)
-![](diags/mov_arm_black.webp)
+![](diags/mov_arm_white.png)
+![](diags/mov_arm_black.png)
 
 The **Arm** or **Hand** can move either two tiles forward, one tile backwards, or one tile backward-sideways.
 
 ### Blind
 
-![](diags/mov_blind_white.webp)
-![](diags/mov_blind_black.webp)
+![](diags/mov_blind_white.png)
+![](diags/mov_blind_black.png)
 
 The **Blind** can move either two tiles forward-sideways, two tiles backwards, or one tile backward-sideways.
 
@@ -49,8 +49,8 @@ All the tiles the Blind can move to on a given turn are the same color. In fact,
 
 ### Star
 
-![](diags/mov_star_white.webp)
-![](diags/mov_star_black.webp)
+![](diags/mov_star_white.png)
+![](diags/mov_star_black.png)
 
 The **Star** can only move one step diagonally, along the edges of the tiles. More simply, the Star is bound to its original tile color, and can move to the six closest tiles of the same color.
 
@@ -58,8 +58,8 @@ Thus, the White Star is bound to dark tiles, and the Black Star is bound to ligh
 
 ### Talls and Stacking
 
-![](diags/stack_pre.webp)
-![](diags/stack_post.webp)
+![](diags/stack_pre.png)
+![](diags/stack_post.png)
 
 A **tall-piece** (Arm, Blind, Star) may move into a flat *of the same color*, so that they **stack** and occupy the same tile. (A flat cannot move into a tall to stack under it.)
 
