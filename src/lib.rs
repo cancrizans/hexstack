@@ -8,12 +8,12 @@ use futures::FutureExt;
 use itertools::Itertools;
 use macroquad::prelude::*;
 
-mod arrows;
+pub mod arrows;
 mod board;
 
-pub use board::{Player, Ply, Tile};
+pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
-use board::{neighbours_attack, neighbours_move, BoardMap, Piece, PieceType, Tall, ZobristHash, BOARD_RADIUS};
+use board::{ BoardMap,  ZobristHash, BOARD_RADIUS};
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
@@ -167,7 +167,6 @@ impl State{
                     end,// + orth_disp, 
                     color, 
                     0.1, 0.2, 0.4,
-
                 )
             });
         })
