@@ -5,7 +5,7 @@ use crate::assets::Assets;
 
 pub const BG_COLOR : Color = color_u8!(0xee,0xee,0xee,0xff);
 
-pub const WIDG_FILL_COLOR : Color = color_u8!(0xcc,0xcc,0xcc,0xff);
+pub const WIDG_FILL_COLOR : Color = color_u8!(0xaa,0xaa,0xaa,0xff);
 
 pub fn color_to_color32(color : Color)->Color32{
     let (r,g,b) = (color.r,color.g,color.b);

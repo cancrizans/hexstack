@@ -572,6 +572,8 @@ impl<'a> GameApp<'a>{
                 inner_margin : Margin::same(20.0),
                 ..Default::default()
             })
+            .resizable(false)
+            .show_separator_line(false)
             .show(egui_ctx, |ui| {
                 set_theme(ui);
                 

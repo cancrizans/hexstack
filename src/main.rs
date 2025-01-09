@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use egui::{Align, Direction, FontFamily, FontId, Layout, Margin, TextStyle};
 #[allow(unused_imports)]
 use hexstack::engine_debug;
@@ -9,7 +11,7 @@ use hexstack::game;
 use hexstack::game::window_conf as game_window_conf;
 use hexstack::game::{GamerSpec, MatchConfig};
 use hexstack::theme::{color_to_color32, set_theme};
-use hexstack::{theme, Player};
+use hexstack::{theme, Player, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
 
 use hexstack::assets::Assets;
@@ -37,11 +39,28 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
 
     let mut break_out = None;
 
-    let mut _time : f32 = 0.0;
+    let mut time : f32 = 0.0;
 
 
     loop {
         clear_background(theme::BG_COLOR);
+
+        {
+            let time_long = time * 0.03 + 0.05;
+            set_camera(&Camera2D{
+                target : vec2(5.0*time_long.cos(),2.0),
+                rotation : 40.0 + 10.0 * (time*0.0342).sin(),
+                zoom: 0.3*vec2(screen_height()/screen_width(), 1.0),
+                ..Default::default()
+            });
+            Tile::draw_board(false);
+        }
+
+        set_default_camera();
+        let mut panel_col = theme::BG_COLOR;
+        panel_col.a = 0.6;
+        // let panel_col = egui::Color32::from_rgba_premultiplied(bg_col32.r(), bg_col32.g(), bg_col32.b(), 30);
+        draw_rectangle(screen_width()*0.55, 0.0, screen_width()*0.5, screen_height(), panel_col);
 
         egui_macroquad::ui(|egui_ctx|{
 
@@ -50,38 +69,49 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
             egui_ctx.set_visuals(egui::Visuals::light());
 
             
+            
 
-            egui::CentralPanel::default()
-            .frame(egui::Frame{
-                fill : color_to_color32(theme::BG_COLOR),
-                inner_margin : Margin::symmetric(160.0,80.0),
-                ..Default::default()
-            })
+            egui::SidePanel::right(egui::Id::new("match_ui"))
+            .frame(
+                egui::Frame::none()
+                .inner_margin(Margin::symmetric(75.0,0.0))
+                // .fill(panel_col)
+
+            )
+            .resizable(false).show_separator_line(false)
             .show(egui_ctx,|ui|{
                 set_theme(ui);
                 
-                let layout = Layout{
-                    main_dir : Direction::LeftToRight,
-                    main_align : Align::Center,
-                    ..Default::default()
-                };
+                // let layout = Layout{
+                //     main_dir : Direction::TopDown,
+                //     ..Default::default()
+                // };
 
-                ui.with_layout(layout,|ui|{
+                ui.add_space(250.0);
+
+                
+                ui.horizontal(|ui|{
+                    ui.set_min_width(400.0);
+                    ui.set_max_width(400.0);
                     match_config.gamers.iter_mut().enumerate().for_each(|(i,g)|{
+                    
                         ui.vertical(|ui|{
                             ui.set_min_width(200.0);
                             ui.set_max_width(200.0);
                     
                             // ui.heading(format!("Player {}",i+1));
 
-                            ui.add_space(200.0);
+                            
         
-                            ui.vertical(|ui|{
-                                choices.iter().for_each(|c|{
-                                    ui.radio_value(g, *c, c.name());
-        
+                            
+                            egui::ComboBox::from_id_source(format!("player{}",i+1))
+                            .selected_text(format!("{}",g.name()))
+                            .show_ui(ui,|ui|{
+                                choices.iter().for_each(|choice|{
+                                    ui.selectable_value(g, *choice, choice.name());
                                 });
                             });
+
         
                             ui.label(g.description());
 
@@ -108,38 +138,43 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
                         });
     
                     });
+                });
 
+                ui.add_space(30.0);
 
-                    ui.separator();
+                ui.separator();
 
-                    ui.add_space(140.0);
+                ui.add_space(30.0);
 
-                    ui.vertical(|ui|{
-                        ui.add_space(450.0);
-                        ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
+            
+                ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
 
-                        ui.add_space(40.0);
-                        ui.horizontal(|ui|{
-                            ui.style_mut().text_styles.insert(
-                                TextStyle::Button, 
-                                FontId { 
-                                    size: 30.0, 
-                                    family: FontFamily::Proportional 
-                                });
-                            let start_button = ui.add_sized(
-                                [200.0,50.0],
-                                egui::Button::new("Start Match")
-                            );
-                            if start_button.clicked(){
-                                break_out = Some(());
-                            }
-                        })
-                        
-                    });
+                ui.add_space(30.0);
+                
+                ui.separator();
+
+                
+
+                ui.add_space(40.0);
+                ui.horizontal(|ui|{
+                    ui.style_mut().text_styles.insert(
+                        TextStyle::Button, 
+                        FontId { 
+                            size: 30.0, 
+                            family: FontFamily::Proportional 
+                        });
+                    let start_button = ui.add_sized(
+                        [200.0,50.0],
+                        egui::Button::new("Start Match")
+                    );
+                    if start_button.clicked(){
+                        break_out = Some(());
+                    }
+                })
+                
+            
                     
 
-                });
-                
 
             });
         });
@@ -156,8 +191,8 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
         });
 
         for pid in [0,1]{
-            let x = -1.2 + (pid as f32)*0.6;
-            let y = -0.5;
+            let x = 0.55 + (pid as f32)*0.6;
+            let y = -0.55;
 
             let size = 0.4*Vec2::ONE;
             let mut base_color = match_config.gamer_one_color.unwrap_or(
@@ -215,25 +250,25 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
         }
 
         
-        let dest_size = vec2(assets.title.width()/assets.title.height(),1.0) * 1.2;
+        let title_dest_size = vec2(assets.title.width()/assets.title.height(),1.0) * 1.2;
         draw_texture_ex(
             assets.title, 
-            0.0, 
-            -0.75, 
+            -1.64, 
+            -1.0, 
             WHITE, DrawTextureParams{
-                dest_size : Some(dest_size),
+                dest_size : Some(title_dest_size),
                 ..Default::default()
             });
 
-        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.05);
+        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.08);
         draw_text_ex(&format!("version {}",env!("CARGO_PKG_VERSION")),
-            1.3,0.9,TextParams { 
+            -1.7,0.9,TextParams { 
                 font: assets.font, font_size, font_scale, font_scale_aspect, color:Color::from_hex(0x111111),
                 ..Default::default()
             },
         );
 
-        _time += get_frame_time();
+        time += get_frame_time();
         next_frame().await
     };
 
