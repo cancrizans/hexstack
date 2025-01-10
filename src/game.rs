@@ -809,8 +809,14 @@ impl<'a> GameApp<'a>{
             _ => {}
         }
 
+
+        
         if self.attack_patterns_alpha > 0.001{
-            self.game_state.state.draw_attacks(false, self.attack_patterns_alpha);
+            let state_for_attacks = match self.display_mode{
+                DisplayMode::Present => &self.game_state.state,
+                DisplayMode::History { index } => self.game_state.history.get(index).map(|e|&e.state_after).unwrap_or(&self.game_state.state)
+            };
+            state_for_attacks.draw_attacks(false, self.attack_patterns_alpha);
         }
 
 
