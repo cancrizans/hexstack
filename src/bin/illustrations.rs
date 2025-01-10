@@ -45,7 +45,7 @@ impl Illustration{
 
 #[macroquad::main("Illustration builder")]
 async fn main(){
-    const FULL_BOARD_SH : (u32,u32) = (700,500);
+    const FULL_BOARD_SH : (u32,u32) = (420,300);
     const FULL_BOARD_ZOOM : f32 = 0.22;
 
     let assets = Assets::load().await;
