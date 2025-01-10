@@ -390,8 +390,11 @@ impl State{
             _ => true
         };
 
+        let mut state_after = state_before.clone();
+        state_after.apply_move(ply);
+
         HistoryEntry{
-            ply, state_before, moved_piece, disambiguate, kills_count : kills.len()
+            ply, state_before, state_after, moved_piece, disambiguate, kills
         }
     }
 
@@ -672,11 +675,12 @@ pub fn draw_attack_map(player : Player, attack_map : &HashMap<Tile, u8>, flip_bo
 #[derive(Clone)]
 pub struct HistoryEntry{
     state_before : State,
+    state_after : State,
     ply : Ply,
     moved_piece : Piece,
 
     disambiguate : bool,
-    kills_count : usize,
+    kills : Vec<(Tile,Piece)>,
 }
 
 impl Display for HistoryEntry{
@@ -700,7 +704,7 @@ impl Display for HistoryEntry{
 
             move_rep,
 
-            (0..self.kills_count).map(|_|'*').collect::<String>()
+            (0..self.kills.len()).map(|_|'*').collect::<String>()
         )
     }
 }

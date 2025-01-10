@@ -146,6 +146,8 @@ trait Gamer{
     fn avatar_offset(&self) -> usize;
 
     fn allows_takebacks(&self) -> bool;
+
+    fn poll_grab_signal(&mut self) -> Option<()>;
 }
 
 
@@ -198,6 +200,9 @@ impl Gamer for Bot{
 
         answer.map(|rep|Decision::Move(rep))
     }
+    fn poll_grab_signal(&mut self) -> Option<()> {
+        None
+    }
 
     fn process(&mut self, _ui : &MqUi, _as_player : Player){
         // let (x,y) = as_player.ui_info_pos().into();
@@ -237,6 +242,8 @@ struct Human{
     allow_takeback : bool,
 
     btn_takeback : Button,
+
+    grab : Option<()>
 }
 
 impl Human{
@@ -250,6 +257,8 @@ impl Human{
             btn_takeback : make_takeback_button(assets),
 
             allow_takeback,
+
+            grab : None
          }
     }
 
@@ -312,6 +321,7 @@ impl Gamer for Human{
 
                 if let Some(selected) = self.selected_tile{
                     if is_mouse_button_pressed(MouseButton::Left){
+                        self.grab = Some(());
                         let candidate_ply = Ply{from_tile : selected, to_tile : mouse_hover};
                         if av_moves.contains(&candidate_ply){
                             self.answer = Some(Decision::Move(candidate_ply));
@@ -321,6 +331,7 @@ impl Gamer for Human{
                     }
                 } else {
                     if is_mouse_button_pressed(MouseButton::Left){
+                        self.grab = Some(());
                         if av_moves.iter().any(|p|p.from_tile == mouse_hover){
                             self.selected_tile = Some(mouse_hover);
                         }
@@ -339,6 +350,9 @@ impl Gamer for Human{
     }
 
     fn avatar_offset(&self) -> usize {0}
+    fn poll_grab_signal(&mut self) -> Option<()> {
+        self.grab.take()
+    }
 }
 
 
@@ -388,6 +402,11 @@ enum GameStateMachine{
 }
 
 
+enum DisplayMode{
+    Present,
+    History{index : usize}
+}
+
 struct GameApp<'a>{
     assets : &'a Assets,
     
@@ -415,6 +434,10 @@ struct GameApp<'a>{
     btn_tile_letters : Button,
     btn_toggle_lines : Button,
     btn_exit : Button,
+
+    display_mode : DisplayMode,
+
+    poll_history_scroll : bool,
     
 }
 
@@ -464,6 +487,8 @@ impl<'a> GameApp<'a>{
             
             game_state : FatGameState::setup(),
 
+            display_mode : DisplayMode::Present,
+
             piece_tex,
             
 
@@ -498,6 +523,8 @@ impl<'a> GameApp<'a>{
                 Rect::new(8.0,-6.0,1.0,1.0),
                 "Quit".to_string()
             ),
+
+            poll_history_scroll : false,
         };
 
         
@@ -511,6 +538,10 @@ impl<'a> GameApp<'a>{
     }
 
     fn apply_move(&mut self, ply : Ply){
+        self.display_mode = DisplayMode::Present;
+        
+
+
         self.last_kill_tiles = vec![];
 
         
@@ -520,12 +551,15 @@ impl<'a> GameApp<'a>{
         self.game_state.apply_move(ply);
         self.last_touched_tiles = Some([ply.from_tile,ply.to_tile]);
 
-
+        self.poll_history_scroll = true;
         
     }
 
     fn undo_moves(&mut self, count : usize){
+        self.display_mode = DisplayMode::Present;
+
         self.game_state.undo_moves(count);
+        self.poll_history_scroll = true;
     
         self.last_kill_tiles = vec![];
         self.last_touched_tiles = None;
@@ -534,6 +568,9 @@ impl<'a> GameApp<'a>{
     }
 
     async fn process(&mut self) -> bool{
+
+        // Clocks
+
         let delta_t = get_frame_time();
 
         self.attack_patterns_alpha += 5.0 *(
@@ -545,21 +582,22 @@ impl<'a> GameApp<'a>{
             _ => match self.game_state.to_play() {Player::Black => 1.0, Player::White => 0.0}
         };
 
-        self.smoothed_to_play += 6.0 * (
+        self.smoothed_to_play +=  (
             (target_smooth_to_play) - self.smoothed_to_play
-        ) * delta_t;
+        ) * (6.0* delta_t).min(1.0);
 
-
+        // Game world camera
         let cam = Camera2D{
             target : vec2(0.0,0.0),
             zoom : 0.15*vec2(screen_height()/screen_width(),-1.0),
             ..Default::default()
         };
         set_camera(&cam);
+
+        // Own ui setup
         let mqui = MqUi::new(self.assets, &cam);
 
-
-
+        // History panel
         egui_macroquad::ui(|egui_ctx| {
             egui_ctx.set_visuals(egui::Visuals::light());
             egui_ctx.set_pixels_per_point(screen_height() / 720.0);
@@ -573,42 +611,104 @@ impl<'a> GameApp<'a>{
             .show_separator_line(false)
             .show(egui_ctx, |ui| {
                 set_theme(ui);
-                
-                
+                ui.horizontal(|ui|{
+                    let hlen = self.game_state.history.len();
+                    if ui.button("<<").clicked(){
+                        self.display_mode = if hlen > 1{
+                            DisplayMode::History { index: 0 }
+                        } else {DisplayMode::Present};
+                    };
 
+                    if ui.button("<").clicked(){
+                        match &mut self.display_mode{
+                            DisplayMode::History { index } => *index = index.saturating_sub(1),
+                            DisplayMode::Present =>  
+                            if hlen > 1{
+                                self.display_mode = DisplayMode::History { index: hlen-2 }
+                            }
+                        }
+                    };
+
+                    if ui.button(">").clicked(){
+                        match &mut self.display_mode{
+                            DisplayMode::History { index } => {
+                                *index = (*index+1).min(hlen-1);
+                                if *index == hlen-1 {self.display_mode = DisplayMode::Present}
+                            },
+                            _ => {}
+                        }
+                    };
+
+                    if ui.button(">>").clicked(){
+                        self.display_mode = DisplayMode::Present;
+                        self.poll_history_scroll = true;
+                    }
+                });
+                ui.add_space(20.0);
                 egui::ScrollArea::vertical()
                 .max_width(300.0)
                 .id_source("history")
                 .show(ui,|ui|{
                     ui.set_max_width(150.0);
                     ui.set_min_width(150.0);
+                    
                     ui.vertical(|ui|{
-                        self.game_state.history.iter().chunks(2)
-                        .into_iter().enumerate().for_each(|(i,mut plies)|{
+                        self.game_state.history.iter().enumerate().chunks(2)
+                        .into_iter().enumerate().for_each(|(i,plies)|{
                             let move_num = i+1;
-                            let p1 = plies.next().unwrap();
+                            
         
                             
                             ui.horizontal(|ui|{
                                 ui.label(egui::RichText::new(format!("{}.",move_num)).strong());
-                                ui.label(format!("{}",p1));
-            
-                                if let Some(p2) = plies.next() {
-                                    ui.label(format!("{}",p2));
-                                };
                                 
+                                plies.for_each(|(move_index,entry)|{
+
+                                    let mut text = egui::RichText::new(format!("{}", entry));
+
+                                    let is_selected = match self.display_mode{
+                                        DisplayMode::History { index } => {
+                                            index == move_index
+                                        },
+                                        _ => {false}
+                                    };
+                                    
+                                    if is_selected{
+                                        text = text.background_color(Color32::from_rgb(200, 255, 255));
+                                    }
+
+                                    let lbl = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                                    if lbl.clicked(){
+                                        self.display_mode = if move_index == self.game_state.history.len() - 1{
+                                            DisplayMode::Present
+                                        } else {
+                                            DisplayMode::History { index: move_index }
+                                        };
+                                    };
+                                    if is_selected{
+                                        lbl.scroll_to_me(None);
+                                    }
+
+
+
+
+                                });
                             });
-                            
-                            
                         });
                         
-                        ui.label("").scroll_to_me(None);
+                        let dummy = ui.label("");
+                        if self.poll_history_scroll{
+                            dummy.scroll_to_me(None);
+                            self.poll_history_scroll = false;
+                        }
                     });
                 });
             });
         });
         egui_macroquad::draw();
 
+
+        // State machine tick and audio
         const SETUP_TIME : f32 = 0.5;
 
         match &mut self.app_state{
@@ -627,7 +727,11 @@ impl<'a> GameApp<'a>{
                     let gamer = self.gamers.get_mut(&to_move).unwrap();
         
                     match gamer.poll_answer() {
-                        None => {},
+                        None => {
+                            if let Some(..) = gamer.poll_grab_signal(){
+                                self.display_mode = DisplayMode::Present;
+                            }
+                        },
                         Some(reply) => 
                             match reply {
                                 Decision::Move(ply) => {
@@ -665,77 +769,100 @@ impl<'a> GameApp<'a>{
             },
 
             GameStateMachine::Won { .. } => {}
-
         }
 
         
-
+        // Draw board
         Tile::draw_board(false);
 
-        match self.app_state{
-            GameStateMachine::Won { winner } => {
-                self.game_state.state.pieces.iter().for_each(|(t,p)|{
-                    let col = if p.color == winner {
-                        Color::from_hex(0x66dd66)
-                    } else {
-                        Color::from_hex(0xdd6666)
-                    };
 
-                    t.draw_highlight_fill(col, false);
-                });
+        // Draw highlights and underlays
+        
+
+        match self.display_mode{
+            DisplayMode::Present => {
+                match self.app_state{
+                    GameStateMachine::Won { winner } => {
+                        self.game_state.state.pieces.iter().for_each(|(t,p)|{
+                            let col = if p.color == winner {
+                                Color::from_hex(0x66dd66)
+                            } else {
+                                Color::from_hex(0xdd6666)
+                            };
+        
+                            t.draw_highlight_fill(col, false);
+                        });
+                    },
+                    _ => {}
+                }
+
+                if let Some([from,to]) = self.last_touched_tiles{
+                    for (t,col) in [(from, Color::from_rgba(0xee, 0xdd,0x11, 90)), (to, Color::from_hex(0xeedd11))]{
+                        t.draw_highlight_fill(col, false)
+                    }
+                }
+
+                self.last_kill_tiles.iter().for_each(|kt|
+                    kt.draw_highlight_fill(Color::from_hex(0xddaaaa), false)
+                );
             },
             _ => {}
         }
-
-        if let Some([from,to]) = self.last_touched_tiles{
-            for (t,col) in [(from, Color::from_rgba(0xee, 0xdd,0x11, 90)), (to, Color::from_hex(0xeedd11))]{
-                t.draw_highlight_fill(col, false)
-            }
-        }
-
-        self.last_kill_tiles.iter().for_each(|kt|
-            kt.draw_highlight_fill(Color::from_hex(0xddaaaa), false)
-        );
 
         if self.attack_patterns_alpha > 0.001{
             self.game_state.state.draw_attacks(false, self.attack_patterns_alpha);
         }
 
-        match &self.app_state{
-            GameStateMachine::Animating(anim_state) => {
-                anim_state.drawing_state.draw(self.piece_tex, self.assets.font, false,false,false);
-                anim_state.ply.draw(false);
+
+        // Draw state
+
+        match self.display_mode{
+            DisplayMode::Present =>
+                match &self.app_state{
+                    GameStateMachine::Animating(anim_state) => {
+                        anim_state.drawing_state.draw(self.piece_tex, self.assets.font, false,false,false);
+                        anim_state.ply.draw(false);
+
+                        let start:Vec2 = anim_state.ply.from_tile.to_world(false).into();
+                        let end = anim_state.ply.to_tile.to_world(false).into();
+
+                        let t = (anim_state.time / MOVE_ANIM_DURATION).clamp(0.0, 1.0);
+                        let lambda = t*t*(3.0-2.0*t);
+                        let pos_ground = start.lerp(end,lambda );
+
+                        let pos = pos_ground + (4.0*lambda*(1.0-lambda))*vec2(0.0,-0.3);
+                        anim_state.moved_piece.draw(pos.x, pos.y, self.piece_tex, 1.0);
 
 
+                        let kill_scale = (1.0-t).powf(2.0) * 1.3;
 
-                let start:Vec2 = anim_state.ply.from_tile.to_world(false).into();
-                let end = anim_state.ply.to_tile.to_world(false).into();
+                        anim_state.kills.iter().for_each(|(t,p)|
+                            {   
+                                let (x,y) = t.to_world(false);
+                                p.draw(x, y, self.piece_tex, kill_scale);
+                            }
+                        );
+                    },
+                    _ => {
 
-                let t = (anim_state.time / MOVE_ANIM_DURATION).clamp(0.0, 1.0);
-                let lambda = t*t*(3.0-2.0*t);
-                let pos_ground = start.lerp(end,lambda );
-
-                let pos = pos_ground + (4.0*lambda*(1.0-lambda))*vec2(0.0,-0.3);
-                anim_state.moved_piece.draw(pos.x, pos.y, self.piece_tex, 1.0);
-
-
-                let kill_scale = (1.0-t).powf(2.0) * 1.3;
-
-                anim_state.kills.iter().for_each(|(t,p)|
-                    {   
-                        let (x,y) = t.to_world(false);
-                        p.draw(x, y, self.piece_tex, kill_scale);
+                        self.game_state.draw(self.piece_tex, self.assets.font);
+                        
                     }
-                );
-            },
-            _ => {
-
-                self.game_state.draw(self.piece_tex, self.assets.font);
-                
+                },
+            DisplayMode::History { index } => {
+                if let Some(entry) = self.game_state.history.get(index){
+                    entry.ply.from_tile.draw_highlight_fill(Color::from_hex(0x95eeee), false);
+                    entry.ply.to_tile.draw_highlight_fill(Color::from_hex(0xa0ffff), false);
+                    for (tile,_) in &entry.kills{
+                        tile.draw_highlight_fill(Color::from_hex(0xddbbbb), false);
+                    }
+                    entry.state_after.draw(self.piece_tex, self.assets.font, false,false,false);
+                }
             }
         };
 
-        // self.game_state.draw_history(self.assets.font);
+        
+        // Draw overlays
 
         if self.tile_letters_toggle{
             Tile::draw_tile_numbers(self.assets.font, false);

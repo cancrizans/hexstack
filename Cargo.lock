@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "hexstack"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "egui",
  "egui-macroquad",
