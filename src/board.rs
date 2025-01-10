@@ -1,6 +1,7 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
+use multiset::HashMultiSet;
 use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display};
 use lazy_static::lazy_static;
 use ::rand::Rng;
@@ -772,6 +773,47 @@ impl ZobristHash{
     }
 }
 
+
+#[derive(PartialEq,Eq,Debug,Clone)]
+pub struct Captured([u8;7]);
+impl Captured{
+    pub fn empty()->Captured{
+        Captured([0;7])
+    }
+    #[inline]
+    pub fn push(&mut self, pt : PieceType){
+        let idx = pt.code();
+        self.0[idx as usize] += 1;
+    }
+
+    pub fn iter_counts(&self) -> impl Iterator<Item = (PieceType,u8)> + '_{
+        self.0.iter().enumerate()
+        .filter(|(_,count)|**count > 0)
+        .map(|(code , count)| 
+            (PieceType::from_code(code as u8),*count)
+        )
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (PieceType)> + '_{
+        self.0.iter().enumerate()
+        .flat_map(|(code,count)| {
+            let pt = PieceType::from_code(code as u8);
+            std::iter::repeat_n(pt, *count as usize)
+        })
+    }
+
+    pub fn count(&self) -> usize{
+        self.0.into_iter().map(|c|c as usize).sum()
+    }
+
+    pub fn len(&self) -> usize{
+        self.0.iter().filter(|&&count|count > 0)
+        .count()
+    }
+
+    pub fn extend(&mut self, iterator : impl IntoIterator<Item = PieceType>){
+        iterator.into_iter().for_each(|pt| self.push(pt))
+    }
+}
 
 
 #[cfg(test)]

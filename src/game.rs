@@ -112,10 +112,7 @@ impl FatGameState{
     }
 
     fn draw(&self, piece_tex : Texture2D, font : Font){
-        
         self.state.draw(piece_tex, font, false, false, false);
-
-        
     }
 
 

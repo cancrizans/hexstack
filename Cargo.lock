@@ -474,7 +474,7 @@ dependencies = [
 
 [[package]]
 name = "hexstack"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "egui",
  "egui-macroquad",
@@ -483,6 +483,7 @@ dependencies = [
  "lazy_static",
  "macroquad",
  "memoize",
+ "multiset",
  "rand",
  "tokio",
 ]
@@ -694,6 +695,12 @@ dependencies = [
  "adler2",
  "simd-adler32",
 ]
+
+[[package]]
+name = "multiset"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce8738c9ddd350996cb8b8b718192851df960803764bcdaa3afb44a63b1ddb5c"
 
 [[package]]
 name = "ndk-sys"

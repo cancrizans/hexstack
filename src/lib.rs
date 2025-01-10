@@ -12,7 +12,7 @@ mod board;
 
 pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
-use board::{ BoardMap,  ZobristHash, BOARD_RADIUS};
+use board::{ BoardMap, Captured, ZobristHash, BOARD_RADIUS};
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
@@ -106,7 +106,7 @@ pub struct State{
     // board : Board,
     to_play : Player,
     pieces : BoardMap<Piece>,//HashMap<Tile, Piece>,
-    captured : Vec<Piece>,
+    captured : HashMap<Player,Captured>,
 
     zobrist_hash : ZobristHash,
 }
@@ -138,7 +138,7 @@ impl State{
         let mut zobrist_hash = ZobristHash::CLEAR;
         pieces.iter().for_each(|(t,p)|zobrist_hash.toggle_piece(t, p));
 
-        State {  to_play: Player::White, pieces, captured:vec![] , zobrist_hash}
+        State {  to_play: Player::White, pieces, captured:HashMap::from([(Player::White,Captured::empty()),(Player::Black,Captured::empty())]) , zobrist_hash}
     }
 
     pub fn draw_attacks(&self, flip_board : bool, alpha:f32){
@@ -191,10 +191,24 @@ impl State{
             p.draw(x,y, piece_tex , 1.0);
         });
 
-        let n_capt = 0.5*(self.captured.len().saturating_sub(1) as f32);
-        self.captured.iter().enumerate().for_each(|(i,p)|{
-            p.draw(0.6*(i as f32 - n_capt),4.7, piece_tex, 0.5);
+        
+        
+        self.captured.iter().for_each(|(player,capts,)|{
+            let n_capt = 0.5*(capts.count().saturating_sub(1) as f32);
+            let basey = match player {Player::White => 4.7, Player::Black => -4.7};
+            capts.iter().enumerate().for_each(|(i,piece_type)|{
+                let p = Piece{color : player.flip(), species : piece_type};
+                let x = 0.6*(i as f32 - n_capt);
+                let y = basey;
+                p.draw(x,y, piece_tex, 0.5);
+                // (0..count).for_each(|it|{
+                //     // let y = basey + 0.6*(it as f32);
+                    
+                // });
+                
+            });
         });
+        
 
         if draw_tile_numbers {
             Tile::draw_tile_numbers(font, flip_board);
@@ -340,10 +354,12 @@ impl State{
 
         let kills = self.stage_attack_scan(attacking_player);
 
-        self.captured.extend(kills.into_iter()
+        self.captured.get_mut(&attacking_player).unwrap()
+        .extend(kills.into_iter()
             .flat_map(|(_,killed_piece)|{
                 killed_piece.unstack()
             })
+            .map(|p|p.species)
         );
 
 
