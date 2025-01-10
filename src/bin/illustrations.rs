@@ -1,5 +1,6 @@
 
 
+use futures::stream::FlatMap;
 use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, State, Tall, Tile};
 use hexstack::PieceType;
 use macroquad::prelude::*;
@@ -41,6 +42,11 @@ impl Illustration{
             .status().unwrap();
             
     }
+}
+
+fn draw_piece(color : Player, species : PieceType, tile : Tile, tex : Texture2D){
+    let (x,y) = tile.to_world(false).into();
+    Piece{color,species}.draw(x, y, tex, 1.0);
 }
 
 #[macroquad::main("Illustration builder")]
@@ -171,5 +177,57 @@ async fn main(){
     //     .arg("diags/*.png")
     //     .spawn()
     //     .unwrap();
+    
+    for (name, post) in [("attack_pre",false), ("attack_post",true)]{
+        let i = Illustration::new(
+            0.35, name.to_string(), (350,350), vec2(-0.35,-0.5)
+        );
+
+        clear_background(theme::BG_COLOR);
+        Tile::draw_board(false);
+
+        let c00 = Tile::from_xyz(0, 0,0).unwrap();
+        let c01 = Tile::from_xyz(0, 1,-1).unwrap();
+        let c10 = Tile::from_xyz(-1, 0,1).unwrap();
+        let c11 = Tile::from_xyz(-1, 1,0).unwrap();
+
+        let cm10 = Tile::from_xyz(1, 0, -1).unwrap();
+        let c21 = Tile::from_xyz(-2, 1, 1).unwrap();
+        let oritile = Tile::from_xyz(0,-1,1).unwrap();
+
+        if post {
+            c11.draw_highlight_fill(Color::from_hex(0xc07070),false);
+        }
+
+        draw_piece(Player::White, PieceType::Flat, if post {c00} else {oritile}, assets.pieces);
+        draw_piece(Player::White, PieceType::Flat, c10, assets.pieces);
+        draw_piece(Player::Black, PieceType::Flat, c01, assets.pieces);
+        draw_piece(Player::Black, PieceType::Flat, c11, assets.pieces);
+
+
+        if post {
+            let dull : Color = Color::new(0.0,0.0,0.0,0.4);
+
+            for (n1,n2,col) in [
+                (c00,c01,WHITE), (c10,c11,WHITE), (c00,c11,WHITE),
+                (c00,cm10, dull), (c10, c21, dull)
+            ]{
+                let s :Vec2 = n1.to_world(false).into();
+                let e : Vec2 = n2.to_world(false).into();
+                let ss = s.lerp(e, 0.35);
+                let ee = s.lerp(e, 0.65); 
+                draw_arrow(ss,ee, col, 0.15, 0.2, 0.4);
+            }
+
+            let ori = oritile.to_world(false).into();
+            draw_arrow(
+                ori, 
+                ori.lerp(c00.to_world(false).into(), 0.6), 
+                Color::new(0.1,0.1,0.1,0.8),0.15, 0.3, 0.6);
+
+        }
+
+        i.dump().await;
+    }
         
 }
