@@ -811,19 +811,18 @@ impl<'a> GameApp<'a>{
 
 
         
-        if self.attack_patterns_alpha > 0.001{
-            let state_for_attacks = match self.display_mode{
-                DisplayMode::Present => &self.game_state.state,
-                DisplayMode::History { index } => self.game_state.history.get(index).map(|e|&e.state_after).unwrap_or(&self.game_state.state)
-            };
-            state_for_attacks.draw_attacks(false, self.attack_patterns_alpha);
-        }
+        
 
 
         // Draw state
 
+        
+
         match self.display_mode{
-            DisplayMode::Present =>
+            DisplayMode::Present =>{
+                if self.attack_patterns_alpha > 0.001{
+                    self.game_state.state.draw_attacks(false, self.attack_patterns_alpha);
+                };
                 match &self.app_state{
                     GameStateMachine::Animating(anim_state) => {
                         anim_state.drawing_state.draw(self.piece_tex, self.assets.font, false,false,false);
@@ -851,9 +850,11 @@ impl<'a> GameApp<'a>{
                     },
                     _ => {
 
+                        
                         self.game_state.draw(self.piece_tex, self.assets.font);
                         
                     }
+                    };
                 },
             DisplayMode::History { index } => {
                 if let Some(entry) = self.game_state.history.get(index){
@@ -861,6 +862,9 @@ impl<'a> GameApp<'a>{
                     entry.ply.to_tile.draw_highlight_fill(Color::from_hex(0xa0ffff), false);
                     for (tile,_) in &entry.kills{
                         tile.draw_highlight_fill(Color::from_hex(0xddbbbb), false);
+                    }
+                    if self.attack_patterns_alpha > 0.001{
+                        entry.state_after.draw_attacks(false, self.attack_patterns_alpha);
                     }
                     entry.state_after.draw(self.piece_tex, self.assets.font, false,false,false);
                 }
