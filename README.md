@@ -9,5 +9,5 @@ cargo run --release
 To build the HTML version:
 
 ```bash
-bash web_build.sh
+bash build_web.sh
 ```
