@@ -1,3 +1,13 @@
-# tokonoma
+Source code for the game [tokonoma](https://cancrizans.itch.io/tokonoma) on itch.
 
-Rules draft is moved [here](https://cancrizans.github.io/hexstack/rules)
+To run standalone:
+
+```bash
+cargo run --release
+```
+
+To build the HTML version:
+
+```bash
+bash web_build.sh
+```
