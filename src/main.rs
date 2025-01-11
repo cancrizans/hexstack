@@ -1,6 +1,6 @@
-use std::fmt::format;
 
-use egui::{Align, Direction, FontFamily, FontId, Layout, Margin, TextStyle};
+use egui::{FontFamily, FontId, Margin, TextStyle};
+
 #[allow(unused_imports)]
 use hexstack::engine_debug;
 #[allow(unused_imports)]
@@ -9,8 +9,10 @@ use hexstack::engine_debug::window_conf as dbg_window_conf;
 use hexstack::game;
 #[allow(unused_imports)]
 use hexstack::game::window_conf as game_window_conf;
+
+
 use hexstack::game::{GamerSpec, MatchConfig};
-use hexstack::theme::{color_to_color32, set_theme};
+use hexstack::theme::set_theme;
 use hexstack::{theme, Player, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
 

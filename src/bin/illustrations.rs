@@ -1,6 +1,5 @@
 
 
-use futures::stream::FlatMap;
 use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, State, Tall, Tile};
 use hexstack::PieceType;
 use macroquad::prelude::*;
@@ -120,6 +119,7 @@ async fn main(){
             let s : Vec2 = start_tile.to_world(false).into();
 
             neighbours_attack(start_tile, pis).into_iter()
+            .flatten()
             .for_each(|n|{
                 let e : Vec2 = n.to_world(false).into();
                 let disp : Vec2 = e-s;

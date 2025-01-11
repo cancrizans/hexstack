@@ -8,7 +8,7 @@ use futures::FutureExt;
 use macroquad::prelude::*;
 
 pub mod arrows;
-mod board;
+pub mod board;
 
 pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
@@ -21,7 +21,7 @@ pub mod assets;
 pub mod theme;
 
 
-#[derive(Copy,Clone, PartialEq, PartialOrd)]
+#[derive(Copy,Clone, PartialEq, PartialOrd, Debug)]
 pub struct Score(f32);
 
 impl Score{
@@ -35,7 +35,7 @@ impl Score{
         Score(val)
     }
 
-    fn win_now(player : Player) -> Score{
+    pub fn win_now(player : Player) -> Score{
         match player{
             Player::Black => Score(-Self::WIN_BASELINE),
             Player::White => Score(Self::WIN_BASELINE)
@@ -113,6 +113,10 @@ pub struct State{
 
 
 impl State{
+    pub fn zobrist_hash(&self) -> ZobristHash{
+        self.zobrist_hash
+    }
+
     pub fn setup()->State{
         // let board = Board::build();
         
@@ -144,6 +148,7 @@ impl State{
     pub fn draw_attacks(&self, flip_board : bool, alpha:f32){
         self.pieces.iter().for_each(|(t,p)|{
             neighbours_attack(*t,*p).into_iter()
+            .flatten()
             .for_each(|target|{
                 let origin : Vec2 = t.to_world(flip_board).into();
                 
@@ -242,16 +247,26 @@ impl State{
         //     }
         // );
         
+        // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.4);
+
+        // draw_text_ex(
+        //     &format!("{:?}", self.max_white_flat_hor()),
+        //     0.0,
+        //     0.0,
+        //     TextParams{font,font_scale,font_scale_aspect,font_size,
+        //         color : Color::from_rgba(0x11, 0x11, 0x11, 127),
+        //         ..Default::default()
+        //     }
+        // );
+        
     }
 
     pub fn valid_moves(&self) -> Vec<Ply>{
-        Tile::all_tiles()
-        .map(|t|self.pieces.get(&t).map(|p|(t,p)))
-        .flatten()
+        self.pieces.iter()
         .filter(|(_,&piece)| piece.color == self.to_play)
         .map(|(t,piece)|{
             
-            neighbours_move(t,*piece).into_iter()
+            neighbours_move(*t,*piece).into_iter().flatten()
             .filter(|n| 
                 if let Some(dest_occupant) = self.pieces.get(n){
                     (piece.species != PieceType::Flat) &
@@ -261,7 +276,7 @@ impl State{
                 }
             )
             .map(move |n|
-                Ply{ from_tile: t, to_tile: n }
+                Ply{ from_tile: *t, to_tile: n }
             )
 
         })
@@ -312,6 +327,10 @@ impl State{
                 (t,killed_piece)
             })
             .collect()
+    }
+
+    pub fn to_play(&self)->Player{
+        self.to_play
     }
 
     pub fn stage_translate(&mut self, ply : Ply){
@@ -419,7 +438,7 @@ impl State{
         self.pieces.iter()
         .filter(|(_,&p)|p.color == attacking_player)
         .for_each(|(t,p)|
-            neighbours_attack(*t,*p).into_iter()
+            neighbours_attack(*t,*p).into_iter().flatten()
             .for_each(|n|
                 match amap.entry(n) {
                     Occupied(mut entry) => {*entry.get_mut() += p.attack();},
@@ -510,7 +529,7 @@ impl State{
         None
     }
 
-    fn eval_heuristic(&self) -> Score{
+    pub fn eval_heuristic(&self) -> Score{
         if let Some(winner)  = self.is_won_home(){
             return Score::win_now(winner);
         }
@@ -613,6 +632,23 @@ impl State{
                 }
             }
         }.boxed()
+    }
+
+
+    pub fn max_white_flat_hor(&self) -> Option<i8>{
+        self.pieces.iter()
+        .filter(|(_,p)| 
+            (p.color == Player::White)
+        )
+        .filter(|(_,p)|
+            match p.species{
+                PieceType::Flat | PieceType::Stack(..) => true,
+                _ => false
+            }
+        )
+
+        .map(|(t,_)|t.x() + 2*t.y())
+        .max()
     }
 }
 

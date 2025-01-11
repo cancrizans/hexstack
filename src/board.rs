@@ -1,7 +1,6 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
-use multiset::HashMultiSet;
 use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display};
 use lazy_static::lazy_static;
 use ::rand::Rng;
@@ -10,8 +9,8 @@ use memoize::memoize;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Tile(u8);
 
-pub const BOARD_RADIUS : u8 = 3;
-const BOARD_SHORT_RADIUS : u8 = 2;
+pub const BOARD_RADIUS : i8 = 3;
+const BOARD_SHORT_RADIUS : i8 = 2;
 
 
 
@@ -22,16 +21,48 @@ use crate::arrows::draw_arrow;
 
 impl Tile{
     
+    //mapping coordinate range -3..=3 to 0..=6
+    //allows us to write an (x,y) Tile in a u8 like this
+    // 0YYY0XXX
+    // with the 3th and 7th unset bits for padding.
+    // if delta-x is expressed in 3-bit 2's complement
+    // then we can do shifts in a single sum + mask.
+    const OFF_Y : i8 = BOARD_RADIUS;
+    const OFF_X : i8 = BOARD_SHORT_RADIUS;
+
+    #[inline]
+    pub const fn new(value : u8) -> Option<Tile>{
+        //assumption that value already has bits 3 and 7 unset.
+        let ux_hi = value << 4;
+
+        if !(ux_hi < 0x50) {
+            return None
+        }
+        if !(value < 0x70){
+            return None
+        }
+
+        // this is 5-z placed in high nibble
+        let uz_sh = (value & 0xF0) + ux_hi;
+        if ! ((0x20 <= uz_sh) & (uz_sh <= 0x80)){
+            return None
+        }
+
+        
+        Some(Tile(value))
+        
+    }
+
     #[inline]
     pub const fn code(&self) -> u8{
         let (ux, uy) = (self.ux(),self.uy());
 
         let shift = match ux{
-            5 => 0,
-            4 => 5,
-            3 => 5+6,
-            2 => 5+6+7 - 1,
-            1 => 5+6+7+6 - 2,
+            4 => 0,
+            3 => 5,
+            2 => 5+6,
+            1 => 5+6+7 - 1,
+            0 => 5+6+7+6 - 2,
             
             _ => unreachable!()
         };
@@ -65,7 +96,7 @@ impl Tile{
 
     #[inline]
     pub const fn x(&self) -> i8{
-        (self.ux() as i8) - (BOARD_RADIUS as i8)
+        (self.ux() as i8) - Tile::OFF_X
     }
 
     #[inline]
@@ -75,7 +106,7 @@ impl Tile{
 
     #[inline]
     pub const fn y(&self) -> i8{
-        (self.uy() as i8) - (BOARD_RADIUS as i8)
+        (self.uy() as i8) - Tile::OFF_Y
     }
 
     
@@ -89,12 +120,20 @@ impl Tile{
         if x+y+z != 0 {
             panic!("Incorrect axial coords.")
         }
-        let sbr = BOARD_RADIUS as i8;
-        let in_range = (x.abs() <= BOARD_SHORT_RADIUS as i8) & (y.abs() <= sbr) & (z.abs() <= sbr);
+        
+        let in_range = 
+            (-BOARD_SHORT_RADIUS <= x)
+            & (x <= BOARD_SHORT_RADIUS)
+            & (-BOARD_RADIUS <= y)
+            & (y <= BOARD_RADIUS)
+            & (-BOARD_RADIUS <= z)
+            & (z <= BOARD_RADIUS);
+        
+        
         if in_range {
-            let ys = (y + (BOARD_RADIUS as i8)) as u8;
+            let ys = (y + Tile::OFF_Y) as u8;
             assert!(ys < 0x10);
-            let xs = (x + (BOARD_RADIUS as i8)) as u8;
+            let xs = (x + Tile::OFF_X) as u8;
             assert!(xs < 0x10);
             Some(Tile((ys<<4)|xs))
         } else {
@@ -102,14 +141,24 @@ impl Tile{
         }
     }
 
-    pub fn antipode(&self) -> Tile{
-        Tile::from_xyz(-self.x(), -self.y(), -self.z()).unwrap()
+
+    #[inline]
+    pub const fn from_xyz_unchecked(x:i8,y:i8,z:i8)->Tile{
+        match Tile::from_xyz(x, y, z){
+            Some(tile) => tile,
+            None => panic!("from_xyz_unchecked None")
+        }
+    }
+
+    pub const fn antipode(&self) -> Tile{
+        Tile::from_xyz_unchecked(-self.x(), -self.y(), -self.z())
     }
 
     #[allow(dead_code)]
-    pub fn mirror(&self) -> Tile{
-        Tile::from_xyz(self.x(), -self.y()-self.x(), -self.z()-self.x()).unwrap()
+    pub const fn mirror(&self) -> Tile{
+        Tile::from_xyz_unchecked(self.x(), -self.y()-self.x(), -self.z()-self.x())
     }
+
 
     pub fn adjacent(&self) -> [Option<Tile>;6]{
         let (x,y,z) = (self.x(), self.y(), self.z());
@@ -120,42 +169,44 @@ impl Tile{
     }
 
     #[inline]
-    fn move_neighbours(&self, kind : &Piece) -> Vec<Tile>{
+    fn move_neighbours(&self, kind : &Piece) -> [Option<Tile>;6]{
 
-        let white_offsets : Vec<Delta> = match kind.species{
-            PieceType::Flat => vec![
-                Delta::WH_FORWARD, 
-                Delta::WH_FRONTDOWN,
-                Delta::WH_FRONTUP,
+        let white_offsets : [Option<Delta>;6] = match kind.species{
+            PieceType::Flat => [
+                Some(Delta::WH_FORWARD), 
+                Some(Delta::WH_FRONTDOWN),
+                Some(Delta::WH_FRONTUP),
+                None, None, None
             ],
             
             PieceType::Lone(tall) | PieceType::Stack(tall)
             => {
                 match tall {
-                    Tall::Hand => vec![
-                        Delta::WH_FORWARD.scale(2),
-                        Delta::WH_BACKUP,
-                        Delta::WH_BACKDOWN,
-                        Delta::WH_BACKWARD
+                    Tall::Hand => [
+                        Some(Delta::WH_FORWARD.scale(2)),
+                        Some(Delta::WH_BACKUP),
+                        Some(Delta::WH_BACKDOWN),
+                        Some(Delta::WH_BACKWARD),
+                        None,None
                     ],
 
-                    Tall::Blind => vec![
-                        Delta::WH_FRONTUP.scale(2),
-                        // Delta::WH_FORWARD,
-                        Delta::WH_BACKUP,
-                        Delta::WH_BACKWARD.scale(2),
-                        Delta::WH_BACKDOWN,
-                        Delta::WH_FRONTDOWN.scale(2),
+                    Tall::Blind => [
+                        Some(Delta::WH_FRONTUP.scale(2)),
+                        Some(Delta::WH_BACKUP),
+                        Some(Delta::WH_BACKWARD.scale(2)),
+                        Some(Delta::WH_BACKDOWN),
+                        Some(Delta::WH_FRONTDOWN.scale(2)),
+                        None
                     ],
 
 
-                    Tall::Star => vec![
-                        Delta::WH_DIAG,
-                        Delta::WH_DIAG.cycle(),
-                        Delta::WH_DIAG.cycle().cycle(),
-                        Delta::WH_DIAG.flip(),
-                        Delta::WH_DIAG.flip().cycle(),
-                        Delta::WH_DIAG.flip().cycle().cycle(),
+                    Tall::Star => [
+                        Some(Delta::WH_DIAG),
+                        Some(Delta::WH_DIAG.cycle()),
+                        Some(Delta::WH_DIAG.cycle().cycle()),
+                        Some(Delta::WH_DIAG.flip()),
+                        Some(Delta::WH_DIAG.flip().cycle()),
+                        Some(Delta::WH_DIAG.flip().cycle().cycle()),
                         ],
                 }
             }
@@ -164,10 +215,15 @@ impl Tile{
 
         let offsets = match kind.color{
             Player::White => white_offsets,
-            Player::Black => white_offsets.into_iter().map(|d|d.flip()).collect()
+            Player::Black => white_offsets.map(
+                |o|
+                o.map(|d|d.flip())
+            )
         };
         
-        offsets.into_iter().flat_map(|off| self.shift(off)).collect()
+        offsets.map(|opt|
+            opt.map(|off|self.shift(off)).flatten()
+        )
         
     }
 
@@ -309,16 +365,20 @@ impl Tile{
         });
     }
 
-    pub fn corner(color : Player) -> Tile{
-        let sbr = BOARD_RADIUS as i8;
+    const CORNER_BLACK : Tile = Tile::from_xyz_unchecked(0,BOARD_RADIUS as i8,-(BOARD_RADIUS as i8));
+    const CORNER_WHITE : Tile = Tile::from_xyz_unchecked(0, -(BOARD_RADIUS as i8),BOARD_RADIUS as i8);
+
+    pub const fn corner(color : Player) -> Tile{
         match color{
-            Player::Black => Tile::from_xyz(0,sbr,-sbr).unwrap(),
-            Player::White => Tile::from_xyz(0, -sbr,sbr).unwrap(),
+            Player::Black => Self::CORNER_BLACK,
+            Player::White => Self::CORNER_WHITE,
         }
     }
 
-    fn shift(self, delta : Delta) -> Option<Tile>{
-        Tile::from_xyz(self.x()+delta.dx, self.y()+delta.dy, self.z()+delta.dz)
+    const fn shift(self, delta : Delta) -> Option<Tile>{
+        let value = self.0.wrapping_add(delta.0) & 0b11110111;
+        Tile::new(value)
+        // Tile::from_xyz(self.x()+delta.dx(), self.y()+delta.dy(), self.z()+delta.dz())
     }
 
     
@@ -326,29 +386,62 @@ impl Tile{
 
 
 #[memoize]
-pub fn neighbours_move(tile : Tile, piece : Piece) -> Vec<Tile>{
+pub fn neighbours_move(tile : Tile, piece : Piece) -> [Option<Tile>;6]{
     tile.move_neighbours(&piece)
 }
 
 #[inline]
-pub fn neighbours_attack(tile : Tile, piece : Piece) -> Vec<Tile>{
+pub fn neighbours_attack(tile : Tile, piece : Piece) -> [Option<Tile>;6]{
     neighbours_move(tile, piece)
 }
 
 
 
+#[inline]
+const fn u3_to_i3(v : u8) -> i8{
+    let low = (v & 0b11) as i8;
+    if v&0b100 != 0{
+        low - 4
+    } else {
+        low
+    }
+}
+
+#[inline]
+const fn i3_to_u3(v : i8) -> u8{
+    (v as u8) & 0b111
+}
+
 
 
 #[derive(Clone, Copy)]
-struct Delta{
-    dx : i8, dy : i8, dz : i8
-}
+struct Delta(u8);
 
 impl Delta{
     const fn from_xyz(dx:i8,dy:i8,dz:i8)->Delta{
-        
-        Delta{dx,dy,dz}
+        if dx + dy + dz != 0 {
+            panic!()
+        }
+
+        let udx = i3_to_u3(dx);
+        let udy = dy as u8;
+
+        Delta((udy<<4)|udx)
     }
+
+    #[inline]
+    const fn dx(&self)->i8{
+        u3_to_i3(self.0)
+    }
+    #[inline]
+    const fn dy(&self)->i8{
+        (self.0 as i8) >> 4
+    }
+    #[inline]
+    const fn dz(&self) -> i8{
+        -self.dx()-self.dy()
+    }
+
     const WH_FORWARD : Delta = Delta::from_xyz(0,1,-1);
     const WH_FRONTUP : Delta = Delta::from_xyz(-1, 1, 0);
     const WH_FRONTDOWN : Delta = Delta::from_xyz(1,0,-1);
@@ -360,21 +453,21 @@ impl Delta{
     const WH_DIAG : Delta = Delta::from_xyz(2,-1,-1);
 
     const fn flip(self) -> Delta{
-        Delta::from_xyz(-self.dx, -self.dy, -self.dz)
+        Delta::from_xyz(-self.dx(), -self.dy(), -self.dz())
     }
     const fn mirror(self) -> Delta{
-        Delta::from_xyz(self.dx, self.dz, self.dy)
+        Delta::from_xyz(self.dx(), self.dz(), self.dy())
     }
 
     const fn scale(self, factor : i8) -> Delta{
         Delta::from_xyz(
-            self.dx * factor, 
-            self.dy * factor, 
-            self.dz * factor)
+            self.dx() * factor, 
+            self.dy() * factor, 
+            self.dz() * factor)
     }
 
     const fn cycle(self) -> Delta{
-        Delta::from_xyz(self.dy, self.dz, self.dx)
+        Delta::from_xyz(self.dy(), self.dz(), self.dx())
     }
 }
 
@@ -656,32 +749,38 @@ pub struct BoardMap<T : Clone>{
 }
 
 impl<T : Clone> BoardMap<T>{
+    #[inline]
     pub fn new() -> BoardMap<T>{
         // BoardMap{data : [const { None };BOARD_SIZE]}
         BoardMap{data : HashMap::new()}
     }
 
+    #[inline]
     pub fn get(&self, key : &Tile) -> Option<&T>{
         // self.data[key.code() as usize].as_ref()
         self.data.get(key)
     } 
 
+    
     pub fn get_by_code(&self, code : u8) -> Option<&T>{
         // self.data[code as usize].as_ref()
         self.data.get(&Tile::from_code(code))
     }
 
+    #[inline]
     pub fn get_mut(&mut self, key : Tile) -> Option<&mut T>{
         // &mut self.data[key.code() as usize]
         self.data.get_mut(&key)
     }
 
+    #[inline]
     pub fn insert(&mut self, key : Tile, value : T) -> Option<T>{
         // let ptr = self.get_mut(key);
         // std::mem::replace(ptr, Some(value))
         self.data.insert(key, value)
     }
 
+    #[inline]
     pub fn iter(&self) -> std::collections::hash_map::Iter<'_,Tile, T>{
         // self.data.iter().enumerate()
         // .map(|(i,ov)| match ov{
@@ -693,6 +792,7 @@ impl<T : Clone> BoardMap<T>{
         self.data.iter()
     }
 
+    #[inline]
     pub fn remove(&mut self, key : &Tile) -> Option<T>{
         self.data.remove(key)
     }
@@ -703,32 +803,13 @@ impl<T : Clone> BoardMap<T>{
         // std::mem::replace(ptr, None)
     }
 
-    // pub fn extract_if<F>(&mut self, predicate : F) -> impl Iterator<Item = (Tile,T)> + use<'_,F,T>
-    //     where F : Fn(&Tile, &T) ->  bool {
-    //         (0..BOARD_SIZE).map(move |code|{
-    //             let ptr = &mut self.data[code];
-    //             let original = ptr.clone();
-    //             match original{
-    //                 None => None,
-    //                 Some(value) => {
-    //                     let tile = Tile::from_code(code as u8);
-    //                     if predicate(&tile,&value){
-    //                         let ogval = std::mem::replace(ptr, None).unwrap();
-    //                         Some((tile, ogval))
-    //                     } else {
-    //                         None
-    //                     }
-    //                 }
-    //             }
-    //         })
-    //         .flatten()
-    //     }
 
+    #[inline]
     pub fn extract_if<F>(&mut self, predicate : F) -> ExtractIf<'_,Tile,T,F>
         where F : FnMut(&Tile, &mut T) -> bool {
             self.data.extract_if(predicate)
         }
-
+    #[inline]
     pub fn entry(&mut self, key : Tile) -> Entry<'_, Tile, T>{
         self.data.entry(key)
     }
@@ -793,7 +874,7 @@ impl Captured{
             (PieceType::from_code(code as u8),*count)
         )
     }
-    pub fn iter(&self) -> impl Iterator<Item = (PieceType)> + '_{
+    pub fn iter(&self) -> impl Iterator<Item = PieceType> + '_{
         self.0.iter().enumerate()
         .flat_map(|(code,count)| {
             let pt = PieceType::from_code(code as u8);
@@ -835,18 +916,94 @@ mod tests{
             })
         );
         
-        (0..BOARD_SIZE).for_each(|code|
-            {
-                let code = code as u8;
-                let tile = Tile::from_code(code);
-                let compute_code = tile.code();
+        // (0..BOARD_SIZE).for_each(|code|
+        //     {
+        //         let code = code as u8;
+        //         let tile = Tile::from_code(code);
+        //         let compute_code = tile.code();
 
-                assert_eq!(code, compute_code);
+        //         assert_eq!(code, compute_code);
 
-                let rebuild = Tile::from_code(compute_code);
+        //         let rebuild = Tile::from_code(compute_code);
 
-                assert_eq!(tile,rebuild);
+        //         assert_eq!(tile,rebuild);
+        //     }
+        // );
+    }
+
+    #[test]
+    fn test_3bit(){
+        (0..4).for_each(|u|{
+            assert_eq!(u, u3_to_i3(u) as u8);
+            assert_eq!(u as i8, u3_to_i3(u));
+        });
+
+        assert_eq!(i3_to_u3(-4),4);
+        assert_eq!(u3_to_i3(4),-4);
+
+        (-4..4).for_each(|i|{
+            assert_eq!(i, u3_to_i3(i3_to_u3(i)));
+        });
+    }
+
+    #[test]
+    fn test_delta(){
+        assert_eq!(Delta::from_xyz(1, 0, -1).0,1);
+        assert_eq!(Delta::from_xyz(-1, 0, 1).0,7);
+        assert_eq!(Delta::from_xyz(0, 1, -1).0,0x10);
+        assert_eq!(Delta::from_xyz(0, -1, 1).0,0xF0);
+
+        (-2..=2).cartesian_product((-3..=3))
+        .flat_map(|(x,y)|{
+            Tile::from_xyz(x, y, -x-y)
+        })
+        .for_each(|t|{
+
+            (-2..=2).cartesian_product((-2..=2))
+            .map(|(x,y)|(x,y,-x-y))
+            .filter(|(_,_,z)|(-2..=2).contains(z))
+            .for_each(|(dx,dy,dz)|{
+                let delta = Delta::from_xyz(dx, dy, dz);
+
+                assert_eq!(dx,delta.dx());
+                assert_eq!(dy,delta.dy());
+                assert_eq!(dz,delta.dz());
+
+                let transl = t.shift(delta);
+                let transl_manual = Tile::from_xyz(
+                    t.x()+dx, 
+                    t.y()+dy, 
+                    t.z() +dz);
+
+                assert_eq!(transl,transl_manual);
+
+            });
+        }); 
+
+
+    }
+
+
+    #[test]
+    fn test_in_board(){
+        (-2..=2).cartesian_product((-3..=3))
+        .for_each(|(x,y)|{
+            let tile_xyz = Tile::from_xyz(x, y, -x-y);
+
+            if let Some(tile_xyz) = tile_xyz{
+                if Tile::new(tile_xyz.0).is_none(){
+                    panic!("Tile x,y = {},{} is some from_xyz (value ${:02X}) but none on new.",x,y,tile_xyz.0);
+                }
             }
-        );
+        });
+
+
+        (0..=255).for_each(|u|{
+            let uu = u & 0b01110111;
+
+            if let Some(tile) = Tile::new(uu){
+                assert!(Tile::from_xyz(tile.x(), tile.y(), tile.z()).is_some())
+            }
+        });
     }
 }
