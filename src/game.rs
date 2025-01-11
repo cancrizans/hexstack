@@ -130,6 +130,8 @@ impl FatGameState{
         self.refresh();
     }
 
+    
+
 }
 
 #[derive(Clone, Copy)]
@@ -555,6 +557,17 @@ impl<'a> GameApp<'a>{
         
     }
 
+    fn undo_until_human(&mut self){
+        if self.gamers.get_mut(&self.game_state.to_play().flip()).unwrap().allows_takebacks(){
+            self.undo_moves(1);
+        }
+        else {
+            self.undo_moves(2);
+        }
+        
+    }
+
+
     fn undo_moves(&mut self, count : usize){
         self.display_mode = DisplayMode::Present;
 
@@ -738,7 +751,7 @@ impl<'a> GameApp<'a>{
                                     self.apply_move(ply);
                                 },
                                 Decision::TakeBack => {
-                                    self.undo_moves(2);
+                                    self.undo_until_human();
                                 }
                             }
                         
@@ -947,7 +960,7 @@ impl<'a> GameApp<'a>{
 
                 if loser.allows_takebacks() {
                     if self.btn_mate_takeback.process(&mqui){
-                        self.undo_moves(2);
+                        self.undo_until_human();
                     }
                 }
             }
