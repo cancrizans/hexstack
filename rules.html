@@ -4,7 +4,7 @@
 
 <body>
 
-    <p><strong>tokonoma</strong>&nbsp;is&nbsp;an&nbsp;abstract&nbsp;strategy board game for two players. It is vaguely
+    <p><strong>tokonoma</strong> is an abstract strategy board game for two players. It is vaguely
         similar to chess, checkers or <a href="https://en.wikipedia.org/wiki/Hive_(game)" target="_blank">Hive</a>.</p>
     <p>Players battle it out on a cramped board with strangely hopping pieces that can stack, a tangle of eclectic
         attack patterns, and an unusual mechanic for capturing. Despite its unassuming size, tokonoma offers remarkable
@@ -72,21 +72,34 @@
     <p>The <strong>Star</strong> can move one step diagonally, along the edges of the tiles. More simply, the Star is
         bound to its original tile color, and can move to the six closest tiles of the same color.</p>
     <p>Thus, the White Star is bound to dark tiles, and the Black Star is bound to light tiles.</p>
+
+
     <h3 id="talls-and-stacking">Talls and Stacking</h3>
+    
     <p><img src="https://cancrizans.github.io/hexstack/diags/stack_pre.png"></p>
-    <p>&nbsp;<img src="https://cancrizans.github.io/hexstack/diags/stack_post.png"></p>
-    <p>A <strong>tall-piece</strong> (Arm, Blind, Star) may move into a flat <em>of the same color</em>, so that they
+    
+    <p><img src="https://cancrizans.github.io/hexstack/diags/stack_post.png"></p>
+    
+
+    <p>A <strong>tall-piece</strong> (Arm, Blind, or Star) may move onto a Flat <em>of the same color</em>, so that they
         <strong>stack</strong> and occupy the same tile. (A flat cannot move into a tall to stack under it.)</p>
-    <p>When stacked, the <strong>flat is essentially inactive, as it can neither move nor attack</strong>. The tall,
+    
+        <p>When stacked, the <strong>flat is essentially inactive, as it can neither move nor attack</strong>. The tall,
         instead, attacks and is free to move off the flat. </p>
-    <p>Stacks are just as vulnerable to attacks as the lone pieces.</p>
+    
+        <p>Stacks are just as vulnerable to attacks as the lone pieces.</p>
+    
+    
+    
+    
+    
     <h2 id="turns">Turns</h2>
     <p>A player's turn consists of two stages:</p>
     <h3 id="movement">Movement</h3>
     <p>The player <strong>must</strong> move one of their pieces by a legal move according to the patterns above. If
         there are no legal moves available, the player has lost (<strong>stalemate</strong>).</p>
     <h3 id="attack">Attack</h3>
-    <p><strong>All</strong> of the player's pieces (including those that were not just moved) automatically attack all
+    <p><strong>All</strong> of the player's pieces (including those that were not just moved) automatically attack <strong>all</strong>
         of the opponent's pieces. A tile is under attack if a player's piece could move into it, or in other words,
         pieces attack in the same pattern as they move.&nbsp; For example: a flat can only attack in front, not
         backwards, because that's how it moves.<br></p>
@@ -108,6 +121,17 @@
     
     Even though white's flat walked into a double attacked tile itself, it is not captured since it was not Black's turn.
 
+    <p>Thus the game phases alternate like this:</p>
+
+    <ul>
+        <li>White moves</li>
+        <li>White attacks Black</li>
+        <li>Black moves</li>
+        <li>Black attacks White</li>
+        <li>White moves</li>
+        <li>...</li>
+    </ul>
+
     <h2 id="win">Win Conditions</h2>
     <p>The game can finish in either of two ways:</p>
     <ul>
@@ -116,9 +140,15 @@
         <li><strong>Stalemate</strong>: If a player starts their turn with no legal moves, they lose.</li>
     </ul>
     <h3 id="draw-by-repetition">Draw by repetition</h3>
-    <p>While unlikely, it is possible to have a non-terminating game. If the same position repeats three times, the game
-        may be declared a draw. This implementation does not apply this rule, and bots do not correctly account for it.
+    <p>While unlikely, it is possible to have a non-terminating game. A rule to determine a draw could be applied; one idea is to limit the number of consecutive reversible moves (i.e. every X moves there should be a flat push or a capture). This implementation does not apply any such rule, and bots do not correctly account for it.
     </p>
+
+
+    <h1>Details</h1>
+
+    <p>tokonoma is <strong>free and open source</strong>. I made it exclusively for fun. I won't ask you for a dime and you can find the (extremely messy) source code <a href="https://github.com/cancrizans/hexstack">here</a>.</p>
+
+    <p>This applies also to the specification of the board game itself, which means you are free to do what you want with it for non-commercial purposes, including writing your own implementations, writing bots, creating variants of the game, or making physical sets. As long as you don't sell it, nothing is sacred.</p>
 
 </body>
 
