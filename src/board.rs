@@ -568,9 +568,19 @@ pub enum PieceType{
 }
 
 impl PieceType{
+    pub fn unstack(self) -> Box<dyn Iterator<Item=PieceType>>{
+        match self{
+            PieceType::Stack(tall) => Box::new([
+                PieceType::Flat,
+                PieceType::Lone(tall),
+            ].into_iter()),
+            _ => Box::new([self].into_iter())
+        }
+    }
+
     const NUM_VALUES : usize = 7;
 
-    fn value(&self) -> f32{
+    pub fn value(&self) -> f32{
         match self {
             PieceType::Flat => {
                 2.0
@@ -684,11 +694,12 @@ impl Piece{
         }
     }
 
-    pub fn defence(&self) -> u8{
-        match self.species{
-            PieceType::Flat | PieceType::Lone(..) => 2,
-            PieceType::Stack(..) => 2
-        }
+    pub const fn defence(&self) -> u8{
+        2
+        // match self.species{
+        //     PieceType::Flat | PieceType::Lone(..) => 2,
+        //     PieceType::Stack(..) => 2
+        // }
     }
 
     pub fn unstack(self) -> Box<dyn Iterator<Item=Piece>>{
@@ -837,7 +848,14 @@ pub struct ZobristHash(u64);
 impl ZobristHash{
     pub const CLEAR : ZobristHash = ZobristHash(0);
 
-    pub fn toggle_piece(&mut self, tile : &Tile, piece : &Piece){
+
+    pub fn toggle_piece(&mut self, tile : &Tile, color : Player, species : PieceType){
+        let piece = Piece { color, species};
+        self.toggle_piece_old(tile, &piece);
+    }
+
+    #[inline]
+    pub fn toggle_piece_old(&mut self, tile : &Tile, piece : &Piece){
         let index = 2*(
             (piece.species.code() as usize) * BOARD_SIZE +
             (tile.code() as usize)
@@ -953,13 +971,13 @@ mod tests{
         assert_eq!(Delta::from_xyz(0, 1, -1).0,0x10);
         assert_eq!(Delta::from_xyz(0, -1, 1).0,0xF0);
 
-        (-2..=2).cartesian_product((-3..=3))
+        (-2..=2).cartesian_product(-3..=3)
         .flat_map(|(x,y)|{
             Tile::from_xyz(x, y, -x-y)
         })
         .for_each(|t|{
 
-            (-2..=2).cartesian_product((-2..=2))
+            (-2..=2).cartesian_product(-2..=2)
             .map(|(x,y)|(x,y,-x-y))
             .filter(|(_,_,z)|(-2..=2).contains(z))
             .for_each(|(dx,dy,dz)|{
@@ -986,7 +1004,7 @@ mod tests{
 
     #[test]
     fn test_in_board(){
-        (-2..=2).cartesian_product((-3..=3))
+        (-2..=2).cartesian_product(-3..=3)
         .for_each(|(x,y)|{
             let tile_xyz = Tile::from_xyz(x, y, -x-y);
 

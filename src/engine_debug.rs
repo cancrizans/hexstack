@@ -75,7 +75,7 @@ impl EngineDebugApp{
     }
 
     fn recompute_engine_eval(&mut self){
-        let comp_corout = start_coroutine(self.game_state.clone().moves_with_score(self.evaluating_depth));
+        let comp_corout = start_coroutine(self.game_state.clone().moves_with_score(self.evaluating_depth,true));
         // let future = self.game_state.clone().moves_with_score(6); 
         // let boxed = Box::pin(future);
         self.computing_moves_future = Some(comp_corout);

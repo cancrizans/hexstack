@@ -1,6 +1,6 @@
 [package]
 name = "hexstack"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 default-run = "hexstack"
 
@@ -16,6 +16,8 @@ lazy_static = "1.5.0"
 rand = "0.8.5"
 memoize = "0.4.2"
 multiset = "0.0.5"
+indicatif = "0.17.9"
+nonmax = "0.5.5"
 
 [build-dependencies]
 itertools = "0.13.0"

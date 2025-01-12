@@ -57,7 +57,7 @@ fn search_min(state : State, depth : usize) -> (Score,Vec<Ply>){
     plies.into_iter().flat_map(|ply|{
         let mut copy = state.clone();
 
-        if (copy.to_play() == Player::White) | (copy.clone().pull_moving_piece(ply.from_tile).species == PieceType::Flat){
+        if (copy.to_play() == Player::White) | (copy.clone().pull_moving_piece(copy.to_play(),ply.from_tile) == PieceType::Flat){
             copy.apply_move(ply);
             let (score, mut game) = search_min(copy, depth-1);
             game.push(ply);

@@ -4,7 +4,7 @@ use crate::assets::Assets;
 use crate::board::Piece;
 use crate::theme::set_theme;
 use crate::ui::{Button, MqUi};
-use crate::{theme, EvalResult, HistoryEntry, Player, Ply, State, Tile};
+use crate::{theme, EvalResult, HistoryEntry, PieceType, Player, Ply, State, Tile};
 use egui::{Color32, Id, Margin};
 use itertools::Itertools;
 use macroquad::audio::{play_sound, play_sound_once, PlaySoundParams};
@@ -190,12 +190,18 @@ impl Gamer for Bot{
 
         self.last_used_depth = Some(depth);
 
-        self.result_future = Some(start_coroutine(state.moves_with_score(depth)));
+        self.result_future = Some(start_coroutine(state.moves_with_score(depth,true)));
     }
 
     fn poll_answer(&mut self) -> Option<Decision> {
         let answer = self.result_future.as_ref().map(|future|
-            future.retrieve().map(|evals|evals.first().unwrap().0)
+            future.retrieve().map(|evals|{
+                println!("----");
+                evals.iter().for_each(|(ply,eval)|{
+                    println!("{} - {}", eval.score, ply);
+                });
+                evals.first().unwrap().0
+            })
         ).flatten();
 
         if answer.is_some() {self.result_future = None;}
@@ -372,9 +378,12 @@ impl MoveAnimState{
 
         let mut kill_copy_state = drawing_state.clone();
         kill_copy_state.stage_translate(ply);
-        let kills = kill_copy_state.stage_attack_scan(drawing_state.to_play);
 
-        let moved_piece = drawing_state.pull_moving_piece(ply.from_tile);
+        let defending = kill_copy_state.to_play.flip();
+        let kills : Vec<(Tile, Piece)> = kill_copy_state.stage_attack_scan(drawing_state.to_play)
+            .map(|(t,sp)|(t,Piece{color:defending,species:sp})).collect();
+
+        let moved_piece = Piece{color : drawing_state.to_play(), species: drawing_state.pull_moving_piece(drawing_state.to_play(),ply.from_tile)};
         kills.iter().for_each(|(kt,_)|drawing_state.clear_tile(kt));
 
         
@@ -796,15 +805,13 @@ impl<'a> GameApp<'a>{
             DisplayMode::Present => {
                 match self.app_state{
                     GameStateMachine::Won { winner } => {
-                        self.game_state.state.pieces.iter().for_each(|(t,p)|{
-                            let col = if p.color == winner {
-                                Color::from_hex(0x66dd66)
-                            } else {
-                                Color::from_hex(0xdd6666)
-                            };
-        
-                            t.draw_highlight_fill(col, false);
-                        });
+                        for (player,color) in [(winner,Color::from_hex(0x66dd66)),(winner.flip(),Color::from_hex(0xdd6666))]{
+                            self.game_state.state.get_pieces(player).iter().for_each(|(t,_)|{
+            
+                                t.draw_highlight_fill(color, false);
+                            });
+                        }
+                        
                     },
                     _ => {}
                 }
