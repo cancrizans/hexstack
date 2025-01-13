@@ -196,9 +196,9 @@ impl Gamer for Bot{
     fn poll_answer(&mut self) -> Option<Decision> {
         let answer = self.result_future.as_ref().map(|future|
             future.retrieve().map(|evals|{
-                println!("----");
+                println!("---- {:?} ----", self.last_used_depth);
                 evals.iter().for_each(|(ply,eval)|{
-                    println!("{} - {}", eval.score, ply);
+                    println!("{} - {} [{}]", eval.score, ply, eval.nodes);
                 });
                 evals.first().unwrap().0
             })

@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use futures::executor::block_on;
 use hexstack::{Player, State};
 
 // const OPENING_DEPTH : usize = 2;
@@ -20,6 +21,7 @@ impl Display for SimResults{
     }
 }
 
+#[allow(dead_code)]
 fn simulate(starting_state : State) -> SimResults{
     let mut results = SimResults{
         white_victories : 0,
@@ -73,11 +75,19 @@ fn main(){
         let mut copy = state0.clone();
         let hentry = copy.compute_history_entry(first_move);
 
+        println!("1. {} ...", hentry);
+
         copy.apply_move(first_move);
+        
+        let los_evaluatos = block_on(
+            copy.clone().moves_with_score(8, false));
 
-        let res = simulate(copy);
+        for (response, eval) in los_evaluatos{
+            let hentry2 = copy.compute_history_entry(response);
+            println!("1. {} {} -- {}",hentry,hentry2,eval.score);
+        }
 
-        println!("{} | {}",hentry, res);
+        
 
 
     }

@@ -2,6 +2,7 @@
 use core::f32;
 
 use std::collections::HashSet;
+use std::usize::MAX;
 use std::{collections::HashMap, fmt::Display};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use futures::future::BoxFuture;
@@ -523,7 +524,9 @@ impl State{
 
         let mut transp_table = TranspositionalTable::new();
 
-        for m in self.valid_moves().into_iter(){
+        
+
+        for m in self.valid_moves(){
             if mquad_frame_await{
                 next_frame().await;
             }
@@ -640,14 +643,29 @@ impl State{
             match depth{
                 0 => EvalResult::immediate(heuristic),
                 _ => {
-                    let moves = self.valid_moves();
+                    let unsorted_moves = self.valid_moves();
 
-                    if moves.len() == 0 {
+                    if unsorted_moves.len() == 0 {
                         EvalResult::immediate(Score::win_now(self.to_play.flip()))
                     } else {
+                        let sorted_moves = match depth{
+                            1 => unsorted_moves,
+                            _ => {
+                                let mut moves_heuristic : Vec<(Ply, Score)> = self.valid_moves().into_iter().map(|ply|{
+                                    let mut hc = self.clone();
+                                    hc.apply_move(ply);
+                                    (ply,hc.eval_heuristic())
+                                }).collect();
+                                match self.to_play{
+                                    Player::White => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap().reverse()),
+                                    Player::Black => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap()),
+                                };
+                                moves_heuristic.into_iter().map(|(ply,_)|ply).collect()
+                            }
+                        };
                         let mut value = Score::win_now(self.to_play.flip());
                         let mut nodes_count = 1;
-                        for m in moves {
+                        for m in sorted_moves {
                             let mut copy = self.clone();
                             copy.apply_move(m);
                             
@@ -657,13 +675,6 @@ impl State{
 
                             let sub_score = sub_result.score.propagate();
                             nodes_count += sub_result.nodes;
-
-                            // if depth == 6{
-                            // //     if nodes_count > NODES_PER_FRAME
-                            // //     {
-                            //         next_frame().await;
-                            // //     }
-                            // }
 
                             value = match self.to_play{
                                 Player::White => value.max(sub_score),

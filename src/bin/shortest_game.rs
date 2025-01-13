@@ -144,12 +144,13 @@ fn main(){
     for depth in 0..=16{
         println!("Searching depth {}...",depth);
         let state = State::setup();
-        let plies = search_shortest_path(state, depth);
-
-        if let Some(mut plies) = plies{
+        let mut searcher = Searcher::new();
+        let (score,mut plies) = searcher.search_max(state, 8);
+        println!("{}",score);
+        // if let Some(mut plies) = plies{
             plies.reverse();
             println!("{}", Vec::from_iter(plies.iter().map(|i| i.to_string())).join(", "));
-            break;
-        }
+            // break;
+        // }
     }
 }
