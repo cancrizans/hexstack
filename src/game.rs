@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::assets::Assets;
 use crate::board::Piece;
+use crate::editor::PositionEditor;
 use crate::theme::set_theme;
 use crate::ui::{Button, MqUi};
 use crate::{theme, EvalResult, HistoryEntry, PieceType, Player, Ply, State, Tile};
@@ -60,11 +61,12 @@ impl GamerSpec{
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct MatchConfig{
     pub gamers : [GamerSpec;2],
     pub gamer_one_color : Option<Player>,
     pub allow_takeback : bool,
+    pub starting_position : Option<PositionEditor>
 }
 
 
@@ -77,8 +79,12 @@ struct FatGameState{
 }
 
 impl FatGameState{
+    #[allow(dead_code)]
     fn setup()->FatGameState{
-        let state = State::setup();
+        Self::setup_from(State::setup())
+    }
+
+    fn setup_from(state : State) -> FatGameState{
         let valid_moves = state.valid_moves();
         FatGameState{
             state,
@@ -492,11 +498,15 @@ impl<'a> GameApp<'a>{
             // (Player::White, Box::new(Bot::new(3))),
             // (Player::Black, Box::new(Human::new()))
             // ]);
+
+        let starting_position = match_config.starting_position
+            .map(|ed|ed.get_state_clone())
+            .unwrap_or(State::setup());
  
         let app_state = GameApp{
             assets,
             
-            game_state : FatGameState::setup(),
+            game_state : FatGameState::setup_from(starting_position),
 
             display_mode : DisplayMode::Present,
 
@@ -738,7 +748,13 @@ impl<'a> GameApp<'a>{
                 if *time < SETUP_TIME{
                     *time += get_frame_time();
                 } else {
-                    self.ask();
+                    self.game_state.refresh();
+                    if let Some(winner) = self.game_state.is_won(){
+                        play_sound_once(self.assets.mate);
+                        self.app_state = GameStateMachine::Won { winner }
+                    } else {
+                        self.ask();
+                    }
                 }
             },
             GameStateMachine::Polling => {

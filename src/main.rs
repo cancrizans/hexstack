@@ -1,6 +1,7 @@
 
 use egui::{FontFamily, FontId, Margin, TextStyle};
 
+use hexstack::editor::PositionEditor;
 #[allow(unused_imports)]
 use hexstack::engine_debug;
 #[allow(unused_imports)]
@@ -35,7 +36,8 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
     let mut match_config = last_match_config.unwrap_or(MatchConfig{
         gamers : [GamerSpec::Human, GamerSpec::Noob],
         gamer_one_color : None,
-        allow_takeback : true
+        allow_takeback : true,
+        starting_position : None
     });
 
 
@@ -148,8 +150,20 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
 
                 ui.add_space(30.0);
 
-            
-                ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
+                ui.horizontal(|ui|{
+                    ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
+
+                    ui.add_space(10.0);
+                    match match_config.starting_position{
+                        Some(..) => if ui.button("Default starting position").clicked(){
+                            match_config.starting_position = None
+                        },
+                        None => if ui.button("Edit starting position").clicked(){
+                            match_config.starting_position = Some(PositionEditor::setup())
+                        }
+                    }
+                });
+                
 
                 ui.add_space(30.0);
                 
@@ -186,11 +200,12 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
             break;
         }
 
-        set_camera(&Camera2D{
+        let match_ui_cam = &Camera2D{
             target:vec2(0.0,0.0),
             zoom : vec2(screen_height()/screen_width(),-1.0),
             ..Default::default()
-        });
+        };
+        set_camera(match_ui_cam);
 
         for pid in [0,1]{
             let x = 0.55 + (pid as f32)*0.6;
@@ -251,17 +266,26 @@ async fn match_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> 
             }
         }
 
-        
-        let title_dest_size = vec2(assets.title.width()/assets.title.height(),1.0) * 1.2;
-        draw_texture_ex(
-            assets.title, 
-            -1.64, 
-            -1.0, 
-            WHITE, DrawTextureParams{
-                dest_size : Some(title_dest_size),
+        if let Some(ref mut editor) = match_config.starting_position{
+            let editor_cam = &Camera2D{
+                target : vec2(6.0,-1.5),
+                zoom : vec2(screen_height()/screen_width(), -1.0) * 0.12,
                 ..Default::default()
-            });
+            };
+            editor.process(editor_cam, assets);
+        } else {
+            let title_dest_size = vec2(assets.title.width()/assets.title.height(),1.0) * 1.2;
+            draw_texture_ex(
+                assets.title, 
+                -1.64, 
+                -1.0, 
+                WHITE, DrawTextureParams{
+                    dest_size : Some(title_dest_size),
+                    ..Default::default()
+                });
+        }
 
+        set_camera(match_ui_cam);
         let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.08);
         draw_text_ex(&format!("version {}",env!("CARGO_PKG_VERSION")),
             -1.7,0.9,TextParams { 
@@ -292,7 +316,7 @@ async fn main(){
     loop{
         let match_config = match_ui(&assets, last_match_config).await;    
         
-        game::main(&assets,match_config).await;
+        game::main(&assets,match_config.clone()).await;
         
         last_match_config = Some(match_config);
     }

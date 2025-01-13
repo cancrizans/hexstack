@@ -21,6 +21,7 @@ pub mod game;
 pub mod ui;
 pub mod assets;
 pub mod theme;
+pub mod editor;
 
 
 #[derive(Copy,Clone, PartialEq, PartialOrd, Debug)]
@@ -478,6 +479,7 @@ impl State{
     // }
 
     pub fn clear_tile(&mut self, location : &Tile){
+        // not hash safe!
         let _ = self.pieces[0].remove(location);
         let _ = self.pieces[1].remove(location);
     }
@@ -771,6 +773,77 @@ impl State{
 
         .map(|(t,_)|t.x() + 2*t.y())
         .max()
+    }
+
+
+    pub fn cycle(&mut self, location : &Tile){
+        let previous = 
+            self.get_pieces(Player::White).get(location)
+            .map(|&species|Piece{color:Player::White,species})
+            .or(self.get_pieces(Player::Black).get(location)
+            .map(|&species|Piece{color:Player::Black,species})
+            );
+
+        self.clear_tile(location);
+
+        let next = match previous{
+            None => Some(Piece{color : Player::White, species: PieceType::Flat}),
+            Some(Piece{color, species : PieceType::Stack(Tall::Star)})
+            => match color{
+                Player::White => Some(Piece{color : Player::Black, species: PieceType::Flat}),
+                Player::Black => None
+            },
+
+
+            Some(Piece { color, species }) => {
+                let next_spec = match species{
+                    PieceType::Flat => PieceType::Lone(Tall::Hand),
+                    PieceType::Lone(Tall::Hand) => PieceType::Lone(Tall::Blind),
+                    PieceType::Lone(Tall::Blind) => PieceType::Lone(Tall::Star),
+                    PieceType::Lone(Tall::Star) => PieceType::Stack(Tall::Hand),
+                    PieceType::Stack(Tall::Hand) => PieceType::Stack(Tall::Blind),
+                    PieceType::Stack(Tall::Blind) => PieceType::Stack(Tall::Star),
+                    PieceType::Stack(Tall::Star) => unreachable!()
+                };
+                Some(Piece{color, species : next_spec})
+            },
+        };
+
+        if let Some(next) = next{
+            let _ = self.get_pieces_mut(next.color).insert(*location, next.species);
+        };
+
+        self.recompute_hash();
+    }
+
+    pub fn paint(&mut self, location : &Tile, brush : Option<Piece>){
+        self.clear_tile(location);
+        if let Some(piece) = brush{
+            self.get_pieces_mut(piece.color).insert(*location, piece.species);
+        }
+
+        self.recompute_hash();
+    }
+
+    pub fn flip_to_move(&mut self){
+        self.to_play = self.to_play.flip();
+        self.recompute_hash();
+    }
+
+    fn recompute_hash(&mut self){
+        let mut hash = ZobristHash::CLEAR;
+
+        for color in [Player::White,Player::Black]{
+            self.get_pieces(color).iter().for_each(|(tile,species)|
+                hash.toggle_piece(tile, color, *species)
+            );
+        }
+        match self.to_play{
+            Player::White => {},
+            Player::Black => {self.zobrist_hash.toggle_to_move();}
+        }
+
+        self.zobrist_hash = hash;
     }
 }
 
