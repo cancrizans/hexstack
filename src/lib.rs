@@ -1,7 +1,7 @@
 #![feature(hash_extract_if)]
 use core::f32;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::usize::MAX;
 use std::{collections::HashMap, fmt::Display};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
@@ -584,6 +584,58 @@ impl State{
         None
     }
 
+    #[inline]
+    fn passed_flat_distance(&self, player : Player) -> u8{
+        let opponent_house = Tile::corner(player.flip());
+        let opponent_pieces = self.get_pieces(player.flip());
+        let active_pieces = self.get_pieces(player);
+
+        let mut active = HashSet::new();
+        active.insert(opponent_house);
+
+        
+
+        for current_distance in 0..=4{
+            let mut new_active = HashSet::new();
+            for tile in active.drain(){
+                if let Some(piece) = active_pieces.get(&tile){
+                    match piece {
+                        PieceType::Flat => return current_distance,
+                        PieceType::Stack(..) => return current_distance+1,
+                        PieceType::Lone(..) => {}
+                    };
+                };
+
+                neighbours_move(tile, Piece{color : player.flip(), species:PieceType::Flat})
+                .iter().for_each(|n|{
+                    if let Some(n) = n{
+                        match opponent_pieces.get(&n){
+                            None => {new_active.insert(*n);},
+                            _ => {}
+                        }
+                    }
+                });
+            }
+
+            active = new_active;
+        };
+
+        8
+        
+    }
+
+    #[inline]
+    fn passed_flat_score(&self, player : Player) -> f32{
+        match self.passed_flat_distance(player){
+            0 => 200.0,
+            1 => 30.0,
+            2 => 10.0,
+            3 => 5.0,
+            4 => 1.0,
+            _ => 0.0
+        }
+    }
+
     pub fn eval_heuristic(&self) -> Score{
         if let Some(winner)  = self.is_won_home(){
             return Score::win_now(winner);
@@ -620,9 +672,11 @@ impl State{
             self.valid_moves_for(Player::White).len() as f32
             - self.valid_moves_for(Player::Black).len() as f32
         );
-        
 
-        Score::finite(finite_score + mobility_score)
+
+        let passed_flat_score = self.passed_flat_score(Player::White) - self.passed_flat_score(Player::Black);
+
+        Score::finite(finite_score + mobility_score + passed_flat_score)
     
     }
 
