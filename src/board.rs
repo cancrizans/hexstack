@@ -1,7 +1,7 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
-use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
+use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display, io::BufRead, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
 use lazy_static::lazy_static;
 use ::rand::Rng;
 use memoize::memoize;
@@ -929,12 +929,14 @@ impl BitSet{
 
     #[inline]
     const fn tile_to_bit(tile : &Tile) -> u8{
-        tile.uy() | (tile.ux() << 3)
+        tile.uy() + tile.ux() * Self::ROW_OFFSET
     }
+
+    const ROW_OFFSET : u8 = 9;
 
     #[inline]
     const fn bit_to_tile(bit : u8) -> Tile{
-        Tile::from_uxy(bit >> 3, bit &0b111)
+        Tile::from_uxy(bit / Self::ROW_OFFSET, bit % Self::ROW_OFFSET)
     } 
 
     #[inline]
@@ -984,10 +986,10 @@ impl BitSet{
 
     const BITS : [u8;29] = [
           02,03,04,05,06,
-         09,10,11,12,13,14,
-        16,17,18,19,20,21,22,
-         24,25,26,27,28,29,
-          32,33,34,35,36,
+         10,11,12,13,14,15,
+        18,19,20,21,22,23,24,
+         27,28,29,30,31,32,
+          36,37,38,39,40
     ];
 
     pub fn into_iter(self) -> impl Iterator<Item = Tile>{
@@ -1001,7 +1003,44 @@ impl BitSet{
     pub fn is_not_empty(&self) -> bool{
         self.0 > 0
     }
-} 
+
+    pub fn generate_move_destinations(&self, color : Player, species : PieceType) -> BitSet{
+        const M : i32 = BitSet::ROW_OFFSET as i32;
+
+        let shifts = match species {
+            PieceType::Flat => [1,M,-M+1].iter(),
+            PieceType::Lone(tall) 
+            | PieceType::Stack(tall)
+            => match tall{
+                Tall::Hand => [2,-M,M-1,-1].iter(),
+                Tall::Blind => [2*M,-2*M+2,-M,M-1,-2].iter(),
+                Tall::Star => [-2*M+1,2*M-1,M+1,-M-1, M-2,-M+2].iter()
+            }
+        };
+
+        let mut buffer = BitSet::new();
+        for &shift in shifts{
+            let signed_shift = match color{
+                Player::White => -shift,
+                Player::Black => shift
+            };
+
+            let shifted = if signed_shift > 0{
+                self.0 >> signed_shift
+            } else {
+                self.0 << -signed_shift
+            };
+
+            buffer.0 |= shifted;
+        };
+
+        buffer
+    }
+    pub fn move_destinations_from_tile(from_tile : Tile,color : Player, species : PieceType) -> BitSet{
+        Self::tile_mask(&from_tile).generate_move_destinations(color, species)
+    }
+
+}
 
 impl BitOr for BitSet{
     type Output = BitSet;
@@ -1032,6 +1071,26 @@ impl BitOrAssign for BitSet{
     }
 }
 
+pub struct DoubleCounterBitset{
+    bitplane1 : BitSet,
+    bitplane0 : BitSet
+}
+
+impl DoubleCounterBitset{
+    pub fn new()->Self{
+        Self{bitplane0:BitSet::new(),bitplane1:BitSet::new()}
+    }
+    pub fn add(&mut self, mask : BitSet){
+        let carry = self.bitplane0 & mask;
+        self.bitplane1 |= carry;
+        self.bitplane0 |= mask;
+    }
+    pub fn get_doubles(&self)->BitSet{
+        self.bitplane1
+    }
+}
+
+
 #[derive(Clone)]
 pub struct PieceMap{
     flats : BitSet,
@@ -1048,7 +1107,7 @@ impl PieceMap{
         self.flats | self.talls[0] | self.talls[1]
     }
 
-    pub fn lone_flats(&self) -> BitSet{
+    pub fn locate_lone_flats(&self) -> BitSet{
         self.flats & !(self.talls[0] | self.talls[1])
     }
 
@@ -1151,6 +1210,17 @@ impl PieceMap{
         (self.occupied() & mask).is_not_empty()
     }
 
+    pub fn locate_talls(&self, tall : Tall) -> BitSet{
+        let (tall0,tall1) = Self::encode_tall(tall);
+
+        match (tall0,tall1){
+            (true,true) => self.talls[0] & self.talls[1],
+            (true,false) => self.talls[0] & !self.talls[1],
+            (false,true) => !self.talls[0] & self.talls[1],
+
+            (false,false) => unreachable!()
+        }
+    }
     
 
     pub fn pull_moving_piece(&mut self, location : Tile) -> (PieceType, PieceType, Option<PieceType>){
@@ -1409,7 +1479,7 @@ mod tests{
             if let Some(tile_xyz) = tile_xyz{
                 let bit = BitSet::tile_to_bit(&tile_xyz);
                 if !BitSet::BITS.contains(&bit){
-                    panic!("tile {} ({}/{}) maps to bit ${:02X} which is invalid.", 
+                    panic!("tile {} ({}/{}) maps to bit {} which is invalid.", 
                     tile_xyz,
                     tile_xyz.ux(),
                     tile_xyz.uy(),
@@ -1418,9 +1488,11 @@ mod tests{
             }
         });
 
-        // BitSet::BITS.iter().for_each(|b|{
-        //     assert!(BitSet::bit_to_tile(b))
-        // });
+        BitSet::BITS.iter().for_each(|b|{
+            let nasty = BitSet::bit_to_tile(*b);
+
+            assert!(Tile::from_xyz(nasty.x(), nasty.y(), nasty.z()).is_some())
+        });
     }
 
     #[test]

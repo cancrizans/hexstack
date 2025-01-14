@@ -14,7 +14,7 @@ pub mod board;
 
 pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
-use board::{ BitSet, BoardMap, Captured, PieceMap, ZobristHash, BOARD_RADIUS};
+use board::{ BitSet, BoardMap, Captured, DoubleCounterBitset, PieceMap, ZobristHash, BOARD_RADIUS};
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
@@ -305,17 +305,18 @@ impl State{
         let viable_destinations_flats = opponent_free.intersection(!active_pieces.occupied());
 
 
-        active_pieces.clone().into_iter()
-        .map(|(t,species)|{
-            let piece = Piece{color : active, species};
 
-            neighbours_move(t,piece).into_iter().flatten()
-            .filter(move |n|match species{
+        active_pieces.clone().into_iter()
+        .map(|(from_tile,species)|{
+            // let piece = Piece{color : active, species};
+
+            BitSet::move_destinations_from_tile(from_tile, active, species)
+            .intersection(match species{
                 PieceType::Flat => viable_destinations_flats,
                 _ => viable_destinations_talls
-            }.get(n))
+            }).into_iter()
             .map(move |n|
-                Ply{ from_tile: t, to_tile: n }
+                Ply{ from_tile, to_tile: n }
             )
 
         })
@@ -526,23 +527,29 @@ impl State{
 
     #[inline]
     pub fn double_attack_map(&self, attacking_player : Player) -> BitSet{
-        let mut single_attacks = BitSet::new();
-        let mut double_attacks = BitSet::new();
+        // let mut single_attacks = BitSet::new();
+        // let mut double_attacks = BitSet::new();
 
-        self.get_pieces(attacking_player).clone().into_iter()
+        let attacking_pieces = self.get_pieces(attacking_player);
+
+        let mut double_attacks = DoubleCounterBitset::new();
+
+        attacking_pieces.clone().into_iter()
         .for_each(|(t,species)|
-            neighbours_attack(t,Piece{color:attacking_player,species}).into_iter().flatten()
-            .for_each(|n|
-                if single_attacks.remove(&n){
-                    double_attacks.set(&n);
-                } else{
-                    single_attacks.set(&n);
-                }
+            double_attacks.add(BitSet::move_destinations_from_tile(t, attacking_player, species))
+            // neighbours_attack(t,Piece{color:attacking_player,species}).into_iter().flatten()
+            // .for_each(|n|
+            //     if single_attacks.remove(&n){
+            //         double_attacks.set(&n);
+            //     } else{
+            //         single_attacks.set(&n);
+            //     }
                 
-            )
+            // )
         );
 
-        double_attacks
+        // double_attacks
+        double_attacks.get_doubles()
     }
 
     pub async fn moves_with_score(self, depth : usize, mquad_frame_await : bool) -> Vec<(Ply, EvalResult)>{
