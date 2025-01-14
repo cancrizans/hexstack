@@ -145,7 +145,7 @@ fn main(){
         println!("Searching depth {}...",depth);
         let state = State::setup();
         let mut searcher = Searcher::new();
-        let (score,mut plies) = searcher.search_max(state, 8);
+        let (score,mut plies) = searcher.search_min(state, depth);
         println!("{}",score);
         // if let Some(mut plies) = plies{
             plies.reverse();

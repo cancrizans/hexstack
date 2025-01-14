@@ -56,7 +56,7 @@ impl GamerSpec{
             GamerSpec::Decent => Bot::new_boxed(2, 0.2),
             GamerSpec::Sharp => Bot::new_boxed(3, 0.4),
             GamerSpec::Tough => Bot::new_boxed(5, 0.4),
-            GamerSpec::Beastly => Bot::new_boxed(6, 0.0)
+            GamerSpec::Beastly => Bot::new_boxed(5, 0.0)
         }
     }
 }

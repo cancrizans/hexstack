@@ -54,6 +54,11 @@ impl Tile{
     }
 
     #[inline]
+    pub const fn from_uxy(ux : u8, uy : u8)-> Tile{
+        Tile((uy << 4) | ux)
+    }
+
+    #[inline]
     pub const fn code(&self) -> u8{
         let (ux, uy) = (self.ux(),self.uy());
 
@@ -135,7 +140,7 @@ impl Tile{
             assert!(ys < 0x10);
             let xs = (x + Tile::OFF_X) as u8;
             assert!(xs < 0x10);
-            Some(Tile((ys<<4)|xs))
+            Some(Tile::from_uxy(xs, ys))
         } else {
             None
         }
@@ -914,6 +919,65 @@ impl Captured{
     }
 }
 
+#[derive(Copy,Clone,PartialEq, Eq)]
+pub struct BitSet(u64);
+
+impl BitSet{
+    pub fn new()->BitSet{
+        BitSet(0)
+    }
+
+    #[inline]
+    const fn tile_to_bit(tile : &Tile) -> u8{
+        tile.uy() | (tile.ux() << 3)
+    }
+
+    #[inline]
+    const fn bit_to_tile(bit : u8) -> Tile{
+        Tile::from_uxy(bit >> 3, bit &0b111)
+    } 
+
+    #[inline]
+    const fn tile_mask(tile : &Tile) -> u64{
+        1<<Self::tile_to_bit(tile)
+    }
+
+    pub const fn intersection(self, other : BitSet) -> BitSet{
+        BitSet(self.0 & other.0)
+    }
+
+    pub fn set(&mut self, location : &Tile){
+        self.0 |= Self::tile_mask(location)
+    }
+
+    pub fn unset(&mut self, location : &Tile){
+        self.0 &= !Self::tile_mask(location)
+    }
+
+    pub fn remove(&mut self, location : &Tile) -> bool{
+        let mask = Self::tile_mask(location);
+        let removed = self.0 & mask > 0;
+        self.0 &= !mask;
+        removed
+    }
+
+    const BITS : [u8;29] = [
+          02,03,04,05,06,
+         09,10,11,12,13,14,
+        16,17,18,19,20,21,22,
+         24,25,26,27,28,29,
+          32,33,34,35,36,
+    ];
+
+    pub fn into_iter(self) -> impl Iterator<Item = Tile>{
+        Self::BITS.into_iter().flat_map(move |bit|{
+            if self.0 & (1<<bit) > 0{
+                Some(Self::bit_to_tile(bit))
+            } else {None}
+        })
+    }
+}
+
 
 #[cfg(test)]
 mod tests{
@@ -1008,7 +1072,12 @@ mod tests{
         .for_each(|(x,y)|{
             let tile_xyz = Tile::from_xyz(x, y, -x-y);
 
+            
+
             if let Some(tile_xyz) = tile_xyz{
+
+                assert_eq!(Tile::from_uxy(tile_xyz.ux(), tile_xyz.uy()), tile_xyz);
+                
                 if Tile::new(tile_xyz.0).is_none(){
                     panic!("Tile x,y = {},{} is some from_xyz (value ${:02X}) but none on new.",x,y,tile_xyz.0);
                 }
@@ -1023,5 +1092,28 @@ mod tests{
                 assert!(Tile::from_xyz(tile.x(), tile.y(), tile.z()).is_some())
             }
         });
+    }
+
+    #[test]
+    fn test_bitsets(){
+        (-2..=2).cartesian_product(-3..=3)
+        .for_each(|(x,y)|{
+            let tile_xyz = Tile::from_xyz(x, y, -x-y);
+
+            if let Some(tile_xyz) = tile_xyz{
+                let bit = BitSet::tile_to_bit(&tile_xyz);
+                if !BitSet::BITS.contains(&bit){
+                    panic!("tile {} ({}/{}) maps to bit ${:02X} which is invalid.", 
+                    tile_xyz,
+                    tile_xyz.ux(),
+                    tile_xyz.uy(),
+                    bit)
+                };
+            }
+        });
+
+        // BitSet::BITS.iter().for_each(|b|{
+        //     assert!(BitSet::bit_to_tile(b))
+        // });
     }
 }

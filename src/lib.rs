@@ -4,7 +4,7 @@ use core::f32;
 use std::collections::{HashSet, VecDeque};
 use std::usize::MAX;
 use std::{collections::HashMap, fmt::Display};
-use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::hash_map::Entry::{self, Occupied, Vacant};
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use macroquad::prelude::*;
@@ -14,7 +14,7 @@ pub mod board;
 
 pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
-use board::{ BoardMap, Captured, ZobristHash, BOARD_RADIUS};
+use board::{ BitSet, BoardMap, Captured, ZobristHash, BOARD_RADIUS};
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
@@ -360,18 +360,31 @@ impl State{
         let defending_player = attacking_player.flip();
         let double_attacked_tiles = self.double_attack_map(attacking_player);
 
-        let target_tiles : HashSet<Tile> = HashSet::from_iter(
-            self.get_pieces(defending_player).iter()
-            .map(|(t,_)|*t)
-        );
+        // let target_tiles : HashSet<Tile> = HashSet::from_iter(
+        //     self.get_pieces(defending_player).iter()
+        //     .map(|(t,_)|*t)
+        // );
 
-        let killed_tiles : Vec<Tile> = target_tiles.intersection(&double_attacked_tiles).map(|t|*t).collect();
+        // let killed_tiles : Vec<Tile> = target_tiles.intersection(&double_attacked_tiles).map(|t|*t).collect();
 
-        killed_tiles.into_iter().map(move |t|{
-                let killed_piece = self.get_pieces_mut(defending_player).remove(&t).unwrap();
-                self.zobrist_hash.toggle_piece(&t, defending_player,killed_piece);
-                (t,killed_piece)
+        double_attacked_tiles.into_iter()
+            .flat_map(move |datile|{
+                match self.get_pieces_mut(defending_player).entry(datile){
+                    Entry::Vacant(..) => None,
+                    Entry::Occupied(entry) => {
+                        let killed_piece = entry.remove();
+                        self.zobrist_hash.toggle_piece(&datile, defending_player,killed_piece);
+
+                        Some((datile, killed_piece))
+                    }
+                }
             })
+
+        // killed_tiles.into_iter().map(move |t|{
+        //         let killed_piece = self.get_pieces_mut(defending_player).remove(&t).unwrap();
+        //         self.zobrist_hash.toggle_piece(&t, defending_player,killed_piece);
+        //         (t,killed_piece)
+        //     })
             
     }
 
@@ -416,12 +429,15 @@ impl State{
         self.zobrist_hash = hash;
     }
 
-    pub fn apply_move(&mut self, ply : Ply){
+    
+
+    pub fn apply_move(&mut self, ply : Ply) -> MoveApplyReport{
         self.stage_translate(ply);
 
         let attacking_player = self.to_play;
 
         let kills : Vec<(Tile, PieceType)> = self.stage_attack_scan(attacking_player).collect();
+        let has_captured =  kills.len() > 0;
 
         self.captured.get_mut(&attacking_player).unwrap()
         .extend(kills.into_iter()
@@ -434,6 +450,10 @@ impl State{
 
         self.to_play = self.to_play.flip();
         self.zobrist_hash.toggle_to_move();
+
+        MoveApplyReport{
+            has_captured
+        }
     }
 
     pub fn compute_history_entry(&self, ply : Ply) -> HistoryEntry{
@@ -484,18 +504,19 @@ impl State{
         let _ = self.pieces[1].remove(location);
     }
 
-    pub fn double_attack_map(&self, attacking_player : Player) -> HashSet<Tile>{
-        let mut single_attacks = HashSet::new();
-        let mut double_attacks = HashSet::new();
+    #[inline]
+    pub fn double_attack_map(&self, attacking_player : Player) -> BitSet{
+        let mut single_attacks = BitSet::new();
+        let mut double_attacks = BitSet::new();
 
         self.get_pieces(attacking_player).iter()
         .for_each(|(t,&species)|
             neighbours_attack(*t,Piece{color:attacking_player,species}).into_iter().flatten()
             .for_each(|n|
                 if single_attacks.remove(&n){
-                    double_attacks.insert(n);
+                    double_attacks.set(&n);
                 } else{
-                    single_attacks.insert(n);
+                    single_attacks.set(&n);
                 }
                 
             )
@@ -535,7 +556,7 @@ impl State{
 
             let mut copy = self.clone();
             copy.apply_move(m);
-            let evaluation = copy.eval(depth-1, &mut transp_table).await;
+            let evaluation = copy.eval(depth-1, &mut transp_table);
             scored_moves.push((m, evaluation));
             // nodes_accum += evaluation.nodes;
 
@@ -558,8 +579,9 @@ impl State{
         scored_moves
     }
     
-    async fn eval(self, depth : usize, transp : &mut TranspositionalTable) -> EvalResult{
-        self.eval_alphabeta(depth, Score::win_now(Player::Black), Score::win_now(Player::White), transp).await
+    #[inline]
+    fn eval(self, depth : usize, transp : &mut TranspositionalTable) -> EvalResult{
+        self.eval_alphabeta(depth, Score::win_now(Player::Black), Score::win_now(Player::White), transp, 0)
     }
 
     fn is_won_home(&self) -> Option<Player>{
@@ -643,14 +665,46 @@ impl State{
             return Score::win_now(winner);
         }
         
+        let white_moves = self.valid_moves_for(Player::White);
+        let white_moves_count = white_moves.len();
+        let black_moves = self.valid_moves_for(Player::Black);
+        let black_moves_count = black_moves.len();
+
+        let mobility_score = 0.1 * (
+            white_moves_count as f32
+            - black_moves_count as f32
+        );
+
+        
+
 
         let finite_score = [Player::White,Player::Black].into_iter()
         .map(|color|{
+
+            let mut single_attacked = HashSet::new();
+            let mut double_attacked = HashSet::new();
+
+            let attacker_moves = match color{
+                Player::Black => &white_moves,
+                Player::White => &black_moves
+            };
+            attacker_moves.iter().for_each(|ply|{
+                let dest = ply.to_tile;
+                if single_attacked.remove(&dest){
+                    double_attacked.insert(dest);
+                } else {
+                    single_attacked.insert(dest);
+                }
+            });
+
             let multiplier = match color{
                 Player::Black => -1f32,
                 Player::White => 1f32
             };
             self.get_pieces(color).iter().map(|(t,&species)|{
+                if double_attacked.contains(t){
+                    return 0.0
+                }
 
                 let signed_piece_value = multiplier * species.value();
     
@@ -670,95 +724,117 @@ impl State{
         }).sum::<f32>() as f32;
         
         
-        let mobility_score = 0.1 * (
-            self.valid_moves_for(Player::White).len() as f32
-            - self.valid_moves_for(Player::Black).len() as f32
-        );
+        
 
 
         let passed_flat_score = self.passed_flat_score(Player::White) - self.passed_flat_score(Player::Black);
 
-        Score::finite(finite_score + mobility_score + passed_flat_score)
+        const TEMPO_BONUS : f32 = 0.5;
+        let tempo_bonus_score = match self.to_play {
+            Player::White => TEMPO_BONUS,
+            Player::Black => - TEMPO_BONUS
+        };
+
+        Score::finite(finite_score + mobility_score + passed_flat_score + tempo_bonus_score)
     
     }
 
-    fn eval_alphabeta(self, depth : usize, alpha : Score, beta : Score, transp : &mut TranspositionalTable) -> BoxFuture<'_,EvalResult>{
+    const MAX_QSEARCH_DEPTH : usize = 2;
+
+    fn eval_alphabeta(self, 
+        depth : usize, 
+        alpha : Score, beta : Score, transp : &mut TranspositionalTable,
+        qsearch_depth : usize
+    
+    ) -> EvalResult{
         // const NODES_PER_FRAME : usize = 500;
-        async move {
-            if let Some(score) = transp.query(self.zobrist_hash, depth){
-                return EvalResult{score, nodes : 1}
-            }
+        
+        if let Some(score) = transp.query(self.zobrist_hash, depth){
+            return EvalResult{score, nodes : 1}
+        }
 
-            let heuristic = self.eval_heuristic();
-            if !heuristic.is_finite(){
-                return EvalResult::immediate(heuristic);
-            }
+        let heuristic = self.eval_heuristic();
+        if !heuristic.is_finite(){
+            return EvalResult::immediate(heuristic);
+        }
 
-            let mut alpha = alpha;
-            let mut beta = beta;
-            match depth{
-                0 => EvalResult::immediate(heuristic),
-                _ => {
-                    let unsorted_moves = self.valid_moves();
+        let mut alpha = alpha;
+        let mut beta = beta;
+        match depth{
+            0 => EvalResult::immediate(heuristic),
+            _ => {
+                let unsorted_moves = self.valid_moves();
 
-                    if unsorted_moves.len() == 0 {
-                        EvalResult::immediate(Score::win_now(self.to_play.flip()))
-                    } else {
-                        let sorted_moves = match depth{
-                            1 => unsorted_moves,
-                            _ => {
-                                let mut moves_heuristic : Vec<(Ply, Score)> = self.valid_moves().into_iter().map(|ply|{
-                                    let mut hc = self.clone();
-                                    hc.apply_move(ply);
-                                    (ply,hc.eval_heuristic())
-                                }).collect();
-                                match self.to_play{
-                                    Player::White => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap().reverse()),
-                                    Player::Black => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap()),
-                                };
-                                moves_heuristic.into_iter().map(|(ply,_)|ply).collect()
-                            }
-                        };
-                        let mut value = Score::win_now(self.to_play.flip());
-                        let mut nodes_count = 1;
-                        for m in sorted_moves {
-                            let mut copy = self.clone();
-                            copy.apply_move(m);
-                            
-                            let sub_zobhash = copy.zobrist_hash.clone();
-                            let sub_result = copy.eval_alphabeta(depth-1, alpha, beta, transp).await;
-                            transp.insert(sub_zobhash, depth-1, sub_result.score);
-
-                            let sub_score = sub_result.score.propagate();
-                            nodes_count += sub_result.nodes;
-
-                            value = match self.to_play{
-                                Player::White => value.max(sub_score),
-                                Player::Black => value.min(sub_score),
+                if unsorted_moves.len() == 0 {
+                    EvalResult::immediate(Score::win_now(self.to_play.flip()))
+                } else {
+                    let sorted_moves = match depth{
+                        1 => unsorted_moves,
+                        _ => {
+                            let mut moves_heuristic : Vec<(Ply, Score)> = vec![];
+                            for ply in self.valid_moves(){
+                                let mut hc = self.clone();
+                                hc.apply_move(ply);
+                                moves_heuristic.push((ply,hc.eval_alphabeta(depth-2,alpha,beta,transp,qsearch_depth).score))
                             };
-
                             match self.to_play{
-                                Player::White => {
-                                    if value >= beta {break;}
-                                    alpha = alpha.max(value);
-                                },
-                                Player::Black => {
-                                    if value <= alpha {break;}
-                                    beta = beta.min(value);
-                                },
-                            }
-
-                            
-                        };
-                        
-                        EvalResult{
-                            score : value,
-                            nodes : nodes_count
+                                Player::White => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap().reverse()),
+                                Player::Black => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap()),
+                            };
+                            moves_heuristic.into_iter().map(|(ply,_)|ply).collect()
                         }
+                    };
+                    let mut value = Score::win_now(self.to_play.flip());
+                    let mut nodes_count = 1;
+                    for m in sorted_moves {
+                        let mut copy = self.clone();
+                        let application_report = copy.apply_move(m);
+
+                        let nonquiescent = (qsearch_depth < Self::MAX_QSEARCH_DEPTH) 
+                            & application_report.has_captured;
+                        
+                        let sub_depth = if nonquiescent{
+                            depth
+                        } else {
+                            depth-1
+                        };
+
+                        let sub_qsearch_depth = if nonquiescent {qsearch_depth+1} else {qsearch_depth};
+                        
+                        let sub_zobhash = copy.zobrist_hash.clone();
+                        let sub_result = copy.eval_alphabeta(sub_depth, alpha, beta, transp, sub_qsearch_depth);
+                        transp.insert(sub_zobhash, sub_depth, sub_result.score);
+
+                        let sub_score = sub_result.score.propagate();
+                        nodes_count += sub_result.nodes;
+
+                        value = match self.to_play{
+                            Player::White => value.max(sub_score),
+                            Player::Black => value.min(sub_score),
+                        };
+
+                        match self.to_play{
+                            Player::White => {
+                                if value >= beta {break;}
+                                alpha = alpha.max(value);
+                            },
+                            Player::Black => {
+                                if value <= alpha {break;}
+                                beta = beta.min(value);
+                            },
+                        }
+
+                        
+                    };
+                    
+                    EvalResult{
+                        score : value,
+                        nodes : nodes_count
                     }
                 }
             }
-        }.boxed()
+        }
+        
     }
 
 
@@ -845,6 +921,10 @@ impl State{
 
         self.zobrist_hash = hash;
     }
+}
+
+pub struct MoveApplyReport{
+    has_captured : bool
 }
 
 struct TranspositionalTable(HashMap<ZobristHash, (usize,Score)>);
@@ -937,5 +1017,40 @@ impl Display for HistoryEntry{
 
             (0..self.kills.len()).map(|_|'*').collect::<String>()
         )
+    }
+}
+
+mod tests{
+    use super::*;
+    #[test]
+    fn test_zobrist(){
+        let mut counter = 0;
+        let mut rng = ::rand::thread_rng();
+        const MAX_ITS : usize = 10000;
+        while counter < MAX_ITS{
+            let mut state = State::setup();
+
+            while let Some(&ply) = state.valid_moves().choose(&mut rng){
+                state.apply_move(ply);
+
+                let hash_stored = state.zobrist_hash.clone();
+                let hash_check = {
+                    let copy = state.clone();
+                    state.recompute_hash();
+                    copy.zobrist_hash
+                };
+
+                assert_eq!(hash_stored,hash_check);
+                
+
+                counter += 1;
+
+                if counter >= MAX_ITS{
+                    break
+                }
+            }
+
+        }
+
     }
 }
