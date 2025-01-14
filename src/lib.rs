@@ -14,7 +14,7 @@ pub mod board;
 
 pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
-use board::{ BitSet, BoardMap, Captured, ZobristHash, BOARD_RADIUS};
+use board::{ BitSet, BoardMap, Captured, PieceMap, ZobristHash, BOARD_RADIUS};
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
@@ -110,7 +110,7 @@ pub struct State{
     to_play : Player,
     // pieces : BoardMap<Piece>,
 
-    pieces : [HashMap<Tile,PieceType>;2],
+    pieces : [PieceMap;2],
 
     captured : HashMap<Player,Captured>,
 
@@ -119,13 +119,13 @@ pub struct State{
 
 
 impl State{
-    fn get_pieces(&self, color : Player) -> &HashMap<Tile,PieceType>{
+    fn get_pieces(&self, color : Player) -> &PieceMap{
         match color{
             Player::White => &self.pieces[0],
             Player::Black => &self.pieces[1]
         }
     }
-    fn get_pieces_mut(&mut self, color : Player) -> &mut HashMap<Tile,PieceType>{
+    fn get_pieces_mut(&mut self, color : Player) -> &mut PieceMap{
         match color{
             Player::White => &mut self.pieces[0],
             Player::Black => &mut self.pieces[1]
@@ -141,8 +141,8 @@ impl State{
     pub fn setup()->State{
         // let board = Board::build();
         
-        let mut white_pieces = HashMap::new();
-        let mut black_pieces = HashMap::new();
+        let mut white_pieces = PieceMap::EMPTY;
+        let mut black_pieces = PieceMap::EMPTY;
 
         let sbr = BOARD_RADIUS as i8;
 
@@ -159,9 +159,9 @@ impl State{
         ].into_iter().for_each(|(x,y, species)|{
             let z = -x-y;
             let t = Tile::from_xyz(x, y, z).unwrap();
-            black_pieces.insert(t, species);
+            black_pieces.set(t, species);
             zobrist_hash.toggle_piece(&t, Player::Black, species);
-            white_pieces.insert(t.antipode(), species);
+            white_pieces.set(t.antipode(), species);
             zobrist_hash.toggle_piece(&t, Player::White, species);
         });
 
@@ -173,9 +173,9 @@ impl State{
 
     pub fn draw_attacks(&self, flip_board : bool, alpha:f32){
         for color in [Player::White,Player::Black]{
-            self.get_pieces(color).iter().for_each(|(t,pt)|{
-                let p = Piece{color, species : *pt};
-                neighbours_attack(*t,p).into_iter()
+            self.get_pieces(color).clone().into_iter().for_each(|(t,pt)|{
+                let p = Piece{color, species : pt};
+                neighbours_attack(t,p).into_iter()
                 .flatten()
                 .for_each(|target|{
                     let origin : Vec2 = t.to_world(flip_board).into();
@@ -219,7 +219,7 @@ impl State{
         }
 
         for color in [Player::White,Player::Black]{
-            self.get_pieces(color).iter().for_each(|(t,&species)|{ 
+            self.get_pieces(color).clone().into_iter().for_each(|(t,species)|{ 
                 let (x,y) = t.to_world(flip_board);
                 let piece = Piece{color, species};
                 piece.draw(x,y, piece_tex , 1.0);
@@ -300,22 +300,22 @@ impl State{
         let active_pieces = self.get_pieces(active);
         let opponent_pieces = self.get_pieces(active.flip());
 
-        active_pieces.iter()
-        .map(|(t,&species)|{
+        let opponent_free = !opponent_pieces.occupied();
+        let viable_destinations_talls = opponent_free.intersection(active_pieces.viable_tall_destinations());
+        let viable_destinations_flats = opponent_free.intersection(!active_pieces.occupied());
+
+
+        active_pieces.clone().into_iter()
+        .map(|(t,species)|{
             let piece = Piece{color : active, species};
 
-            neighbours_move(*t,piece).into_iter().flatten()
-            .filter(|n|!opponent_pieces.contains_key(n))
-            .filter(move |n| 
-                if let Some(dest_occupant) = active_pieces.get(n){
-                    (piece.species != PieceType::Flat) &
-                    (*dest_occupant == PieceType::Flat) 
-                } else {
-                    true
-                }
-            )
+            neighbours_move(t,piece).into_iter().flatten()
+            .filter(move |n|match species{
+                PieceType::Flat => viable_destinations_flats,
+                _ => viable_destinations_talls
+            }.get(n))
             .map(move |n|
-                Ply{ from_tile: *t, to_tile: n }
+                Ply{ from_tile: t, to_tile: n }
             )
 
         })
@@ -324,33 +324,39 @@ impl State{
 
     #[inline]
     pub fn pull_moving_piece(&mut self, color : Player, from_tile : Tile) -> PieceType{
-        let mut hash = self.zobrist_hash();
+        
         let pieces = self.get_pieces_mut(color);
         
-        let pulled = match pieces.entry(from_tile){
-            Occupied(mut entry) => {
-                let original = entry.get().clone();
+        // let pulled = match pieces.entry(from_tile){
+        //     Occupied(mut entry) => {
+        //         let original = entry.get().clone();
                 
 
-                match original {
-                    PieceType::Flat | PieceType::Lone(..) => {
-                        hash.toggle_piece(&from_tile,color, original);
-                        entry.remove()
-                    },
-                    PieceType::Stack(tall) => {
-                        hash.toggle_piece(&from_tile,color, original);
-                        let replacement = PieceType::Flat;
-                        hash.toggle_piece(&from_tile,color,replacement);
-                        entry.insert(replacement);
+        //         match original {
+        //             PieceType::Flat | PieceType::Lone(..) => {
+        //                 hash.toggle_piece(&from_tile,color, original);
+        //                 entry.remove()
+        //             },
+        //             PieceType::Stack(tall) => {
+        //                 hash.toggle_piece(&from_tile,color, original);
+        //                 let replacement = PieceType::Flat;
+        //                 hash.toggle_piece(&from_tile,color,replacement);
+        //                 entry.insert(replacement);
 
-                        PieceType::Lone(tall)
-                    },
-                }
-            },
-            Vacant(..) => panic!() 
-        };
+        //                 PieceType::Lone(tall)
+        //             },
+        //         }
+        //     },
+        //     Vacant(..) => panic!() 
+        // };
 
-        self.zobrist_hash = hash;
+        // self.zobrist_hash = hash;
+
+        let (pulled, original, remainder) = pieces.pull_moving_piece(from_tile);
+        self.zobrist_hash.toggle_piece(&from_tile, color, original);
+        if let Some(remainder) = remainder{
+            self.zobrist_hash.toggle_piece(&from_tile, color, remainder);
+        }
 
         pulled
     }
@@ -367,18 +373,20 @@ impl State{
 
         // let killed_tiles : Vec<Tile> = target_tiles.intersection(&double_attacked_tiles).map(|t|*t).collect();
 
-        double_attacked_tiles.into_iter()
-            .flat_map(move |datile|{
-                match self.get_pieces_mut(defending_player).entry(datile){
-                    Entry::Vacant(..) => None,
-                    Entry::Occupied(entry) => {
-                        let killed_piece = entry.remove();
-                        self.zobrist_hash.toggle_piece(&datile, defending_player,killed_piece);
+        // double_attacked_tiles.into_iter()
+        //     .flat_map(move |datile|{
+        //         match self.get_pieces_mut(defending_player).entry(datile){
+        //             Entry::Vacant(..) => None,
+        //             Entry::Occupied(entry) => {
+        //                 let killed_piece = entry.remove();
+        //                 self.zobrist_hash.toggle_piece(&datile, defending_player,killed_piece);
 
-                        Some((datile, killed_piece))
-                    }
-                }
-            })
+        //                 Some((datile, killed_piece))
+        //             }
+        //         }
+        //     })
+
+        self.get_pieces_mut(defending_player).kill(double_attacked_tiles)
 
         // killed_tiles.into_iter().map(move |t|{
         //         let killed_piece = self.get_pieces_mut(defending_player).remove(&t).unwrap();
@@ -398,35 +406,43 @@ impl State{
 
         
         let moving_piece = self.pull_moving_piece(self.to_play,from_tile);
-        let mut hash = self.zobrist_hash;
 
-        match self.get_pieces_mut(self.to_play).entry(to_tile){
-            Vacant(vacancy) => {
-                hash.toggle_piece(&to_tile,active, moving_piece);
-                vacancy.insert(moving_piece);
-            },
+        let (original_in_dest, final_in_dest) = self.get_pieces_mut(self.to_play).toss(ply.to_tile, moving_piece);
 
-            Occupied(mut entry) => {
-                let occupant = entry.get();
+        if let Some(original) = original_in_dest{
+            self.zobrist_hash.toggle_piece(&ply.to_tile, self.to_play, original);
+        }
+        self.zobrist_hash.toggle_piece(&ply.to_tile, self.to_play, final_in_dest);
+
+        // let mut hash = self.zobrist_hash;
+
+        // match self.get_pieces_mut(self.to_play).entry(to_tile){
+        //     Vacant(vacancy) => {
+        //         hash.toggle_piece(&to_tile,active, moving_piece);
+        //         vacancy.insert(moving_piece);
+        //     },
+
+        //     Occupied(mut entry) => {
+        //         let occupant = entry.get();
                 
-                match occupant{
-                    PieceType::Flat => (),
-                    _ => panic!()
-                };
-                match moving_piece{
-                    PieceType::Lone(moving_tall) => {
-                        hash.toggle_piece(&to_tile,active, *occupant);
-                        let tgt_replacement = PieceType::Stack(moving_tall);
-                        hash.toggle_piece(&to_tile,active, tgt_replacement);
-                        entry.insert(tgt_replacement);
-                    },
-                    _ => panic!("Non-lone moving piece moving into flat.")
-                }
+        //         match occupant{
+        //             PieceType::Flat => (),
+        //             _ => panic!()
+        //         };
+        //         match moving_piece{
+        //             PieceType::Lone(moving_tall) => {
+        //                 hash.toggle_piece(&to_tile,active, *occupant);
+        //                 let tgt_replacement = PieceType::Stack(moving_tall);
+        //                 hash.toggle_piece(&to_tile,active, tgt_replacement);
+        //                 entry.insert(tgt_replacement);
+        //             },
+        //             _ => panic!("Non-lone moving piece moving into flat.")
+        //         }
 
                 
-            }
-        } ;
-        self.zobrist_hash = hash;
+        //     }
+        // } ;
+        // self.zobrist_hash = hash;
     }
 
     
@@ -451,6 +467,10 @@ impl State{
         self.to_play = self.to_play.flip();
         self.zobrist_hash.toggle_to_move();
 
+
+        //not good
+        // self.recompute_hash();
+
         MoveApplyReport{
             has_captured
         }
@@ -471,7 +491,7 @@ impl State{
         let disambiguate = match moves.iter().filter(|&av|{
             (av.to_tile == ply.to_tile) & 
             (
-                state_before.get_pieces(state_before.to_play).get(&av.from_tile).unwrap().to_lone() == moved_piece
+                state_before.get_pieces(state_before.to_play).get(av.from_tile).unwrap().to_lone() == moved_piece
             )
         }).count(){
             0 => panic!("No moves matching {:?} {:?} from move pool {:?}",moved_piece,ply, moves),
@@ -500,8 +520,8 @@ impl State{
 
     pub fn clear_tile(&mut self, location : &Tile){
         // not hash safe!
-        let _ = self.pieces[0].remove(location);
-        let _ = self.pieces[1].remove(location);
+        let _ = self.pieces[0].clear_tile(*location);
+        let _ = self.pieces[1].clear_tile(*location);
     }
 
     #[inline]
@@ -509,9 +529,9 @@ impl State{
         let mut single_attacks = BitSet::new();
         let mut double_attacks = BitSet::new();
 
-        self.get_pieces(attacking_player).iter()
-        .for_each(|(t,&species)|
-            neighbours_attack(*t,Piece{color:attacking_player,species}).into_iter().flatten()
+        self.get_pieces(attacking_player).clone().into_iter()
+        .for_each(|(t,species)|
+            neighbours_attack(t,Piece{color:attacking_player,species}).into_iter().flatten()
             .for_each(|n|
                 if single_attacks.remove(&n){
                     double_attacks.set(&n);
@@ -587,7 +607,8 @@ impl State{
     fn is_won_home(&self) -> Option<Player>{
         for defender in [Player::White,Player::Black]{
             let attacker = defender.flip();
-            if let Some(&species) = self.get_pieces(attacker).get(&Tile::corner(defender)){
+            if let Some(species) = self.get_pieces(attacker)
+                .get(Tile::corner(defender)){
                 if species == PieceType::Flat{
                     return Some(attacker);
                 }
@@ -622,7 +643,7 @@ impl State{
         for current_distance in 0..=4{
             let mut new_active = HashSet::new();
             for tile in active.drain(){
-                if let Some(piece) = active_pieces.get(&tile){
+                if let Some(piece) = active_pieces.get(tile){
                     match piece {
                         PieceType::Flat => return current_distance,
                         PieceType::Stack(..) => return current_distance+1,
@@ -633,7 +654,7 @@ impl State{
                 neighbours_move(tile, Piece{color : player.flip(), species:PieceType::Flat})
                 .iter().for_each(|n|{
                     if let Some(n) = n{
-                        match opponent_pieces.get(&n){
+                        match opponent_pieces.get(*n){
                             None => {new_active.insert(*n);},
                             _ => {}
                         }
@@ -701,8 +722,8 @@ impl State{
                 Player::Black => -1f32,
                 Player::White => 1f32
             };
-            self.get_pieces(color).iter().map(|(t,&species)|{
-                if double_attacked.contains(t){
+            self.get_pieces(color).clone().into_iter().map(|(t,species)|{
+                if double_attacked.contains(&t){
                     return 0.0
                 }
 
@@ -839,7 +860,7 @@ impl State{
 
 
     pub fn max_white_flat_hor(&self) -> Option<i8>{
-        self.get_pieces(Player::White).iter()
+        self.get_pieces(Player::White).clone().into_iter()
         .filter(|(_,species)|
             match species{
                 PieceType::Flat | PieceType::Stack(..) => true,
@@ -852,50 +873,12 @@ impl State{
     }
 
 
-    pub fn cycle(&mut self, location : &Tile){
-        let previous = 
-            self.get_pieces(Player::White).get(location)
-            .map(|&species|Piece{color:Player::White,species})
-            .or(self.get_pieces(Player::Black).get(location)
-            .map(|&species|Piece{color:Player::Black,species})
-            );
-
-        self.clear_tile(location);
-
-        let next = match previous{
-            None => Some(Piece{color : Player::White, species: PieceType::Flat}),
-            Some(Piece{color, species : PieceType::Stack(Tall::Star)})
-            => match color{
-                Player::White => Some(Piece{color : Player::Black, species: PieceType::Flat}),
-                Player::Black => None
-            },
-
-
-            Some(Piece { color, species }) => {
-                let next_spec = match species{
-                    PieceType::Flat => PieceType::Lone(Tall::Hand),
-                    PieceType::Lone(Tall::Hand) => PieceType::Lone(Tall::Blind),
-                    PieceType::Lone(Tall::Blind) => PieceType::Lone(Tall::Star),
-                    PieceType::Lone(Tall::Star) => PieceType::Stack(Tall::Hand),
-                    PieceType::Stack(Tall::Hand) => PieceType::Stack(Tall::Blind),
-                    PieceType::Stack(Tall::Blind) => PieceType::Stack(Tall::Star),
-                    PieceType::Stack(Tall::Star) => unreachable!()
-                };
-                Some(Piece{color, species : next_spec})
-            },
-        };
-
-        if let Some(next) = next{
-            let _ = self.get_pieces_mut(next.color).insert(*location, next.species);
-        };
-
-        self.recompute_hash();
-    }
+    
 
     pub fn paint(&mut self, location : &Tile, brush : Option<Piece>){
         self.clear_tile(location);
         if let Some(piece) = brush{
-            self.get_pieces_mut(piece.color).insert(*location, piece.species);
+            self.get_pieces_mut(piece.color).set(*location, piece.species);
         }
 
         self.recompute_hash();
@@ -910,8 +893,8 @@ impl State{
         let mut hash = ZobristHash::CLEAR;
 
         for color in [Player::White,Player::Black]{
-            self.get_pieces(color).iter().for_each(|(tile,species)|
-                hash.toggle_piece(tile, color, *species)
+            self.get_pieces(color).clone().into_iter().for_each(|(tile,species)|
+                hash.toggle_piece(&tile, color, species)
             );
         }
         match self.to_play{

@@ -822,7 +822,7 @@ impl<'a> GameApp<'a>{
                 match self.app_state{
                     GameStateMachine::Won { winner } => {
                         for (player,color) in [(winner,Color::from_hex(0x66dd66)),(winner.flip(),Color::from_hex(0xdd6666))]{
-                            self.game_state.state.get_pieces(player).iter().for_each(|(t,_)|{
+                            self.game_state.state.get_pieces(player).clone().into_iter().for_each(|(t,_)|{
             
                                 t.draw_highlight_fill(color, false);
                             });
