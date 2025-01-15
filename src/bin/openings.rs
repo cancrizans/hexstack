@@ -1,7 +1,8 @@
 use std::{collections::HashMap, fmt::Display};
 
 use futures::executor::block_on;
-use hexstack::{board::Captured, Player, Position};
+
+use hexstack::tokonoma::{Player,Position,Captured};
 
 // const OPENING_DEPTH : usize = 2;
 const SAMPLES : usize = 100;

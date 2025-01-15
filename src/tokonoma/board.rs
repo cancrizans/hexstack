@@ -1,9 +1,7 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
-use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
-use lazy_static::lazy_static;
-use ::rand::Rng;
+use std::{fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
 use memoize::memoize;
 use crate::{arrows::draw_arrow, assets::Assets};
 
@@ -619,7 +617,7 @@ impl PieceType{
         }
     }
 
-    const NUM_VALUES : usize = 7;
+    
 
     pub fn value(&self) -> f32{
         match self {
@@ -778,125 +776,6 @@ impl Display for Ply{
 }
 
 
-
-#[derive(Clone)]
-pub struct BoardMap<T : Clone>{
-    // data : [Option<T>;BOARD_SIZE],
-    data : HashMap<Tile,T>
-}
-
-impl<T : Clone> BoardMap<T>{
-    #[inline]
-    pub fn new() -> BoardMap<T>{
-        // BoardMap{data : [const { None };BOARD_SIZE]}
-        BoardMap{data : HashMap::new()}
-    }
-
-    #[inline]
-    pub fn get(&self, key : &Tile) -> Option<&T>{
-        // self.data[key.code() as usize].as_ref()
-        self.data.get(key)
-    } 
-
-    
-    pub fn get_by_code(&self, code : u8) -> Option<&T>{
-        // self.data[code as usize].as_ref()
-        self.data.get(&Tile::from_code(code))
-    }
-
-    #[inline]
-    pub fn get_mut(&mut self, key : Tile) -> Option<&mut T>{
-        // &mut self.data[key.code() as usize]
-        self.data.get_mut(&key)
-    }
-
-    #[inline]
-    pub fn insert(&mut self, key : Tile, value : T) -> Option<T>{
-        // let ptr = self.get_mut(key);
-        // std::mem::replace(ptr, Some(value))
-        self.data.insert(key, value)
-    }
-
-    #[inline]
-    pub fn iter(&self) -> std::collections::hash_map::Iter<'_,Tile, T>{
-        // self.data.iter().enumerate()
-        // .map(|(i,ov)| match ov{
-        //     None => None,
-        //     Some(v) => Some((Tile::from_code(i as u8),v))
-        // })
-        // .flatten()
-        
-        self.data.iter()
-    }
-
-    #[inline]
-    pub fn remove(&mut self, key : &Tile) -> Option<T>{
-        self.data.remove(key)
-    }
-
-    pub fn remove_by_code(&mut self, _code : u8) -> Option<T>{
-        todo!()
-        // let ptr = &mut self.data[code as usize];
-        // std::mem::replace(ptr, None)
-    }
-
-
-    #[inline]
-    pub fn extract_if<F>(&mut self, predicate : F) -> ExtractIf<'_,Tile,T,F>
-        where F : FnMut(&Tile, &mut T) -> bool {
-            self.data.extract_if(predicate)
-        }
-    #[inline]
-    pub fn entry(&mut self, key : Tile) -> Entry<'_, Tile, T>{
-        self.data.entry(key)
-    }
-}
-
-
-
-const ZOBRIST_TABLE_SIZE : usize = BOARD_SIZE * PieceType::NUM_VALUES * 2 + 1;
-
-lazy_static! {
-    static ref ZOBRIST_SALT : [u64; ZOBRIST_TABLE_SIZE] = {
-        let mut table = [0; ZOBRIST_TABLE_SIZE];
-        let mut rng = ::rand::thread_rng();
-        (0..ZOBRIST_TABLE_SIZE).for_each(|i|{
-            table[i] = rng.gen::<u64>();
-        });
-        table
-    };
-}
-
-
-#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
-pub struct ZobristHash(u64);
-
-impl ZobristHash{
-    pub const CLEAR : ZobristHash = ZobristHash(0);
-
-
-    pub fn toggle_piece(&mut self, tile : &Tile, color : Player, species : PieceType){
-        let piece = Piece { color, species};
-        self.toggle_piece_old(tile, &piece);
-    }
-
-    #[inline]
-    pub fn toggle_piece_old(&mut self, tile : &Tile, piece : &Piece){
-        let index = 2*(
-            (piece.species.code() as usize) * BOARD_SIZE +
-            (tile.code() as usize)
-        ) + match piece.color{
-            Player::White => 0,
-            Player::Black => 1
-        };
-
-        self.0 ^= ZOBRIST_SALT[index];
-    }
-
-    pub fn toggle_to_move(&mut self){
-        self.0 ^= ZOBRIST_SALT[ZOBRIST_TABLE_SIZE-1];
-    }
-}
 
 
 #[derive(PartialEq,Eq,Debug,Clone)]

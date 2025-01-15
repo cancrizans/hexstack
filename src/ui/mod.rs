@@ -1,3 +1,7 @@
+pub mod editor;
+pub mod rulesheet;
+pub mod match_config;
+
 use macroquad::prelude::*;
 
 use crate::assets::Assets;

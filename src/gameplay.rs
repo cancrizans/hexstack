@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::assets::Assets;
-use crate::board::{Captured, Piece};
-use crate::editor::PositionEditor;
-use crate::theme::set_theme;
+use crate::tokonoma::{board::Piece, EvalResult, Position};
+
+use crate::tokonoma::MatchState;
+
+use crate::{theme::set_theme, ui::{editor::PositionEditor, rulesheet::read_rulesheet}};
 use crate::ui::{Button, MqUi};
-use crate::{theme, EvalResult, HistoryEntry, Player, Ply, Position, Tile};
+use crate::{theme, Player, Ply, Tile};
 use egui::{Color32, Id, Margin};
 use itertools::Itertools;
 use macroquad::audio::{play_sound, play_sound_once, PlaySoundParams};
@@ -70,117 +72,7 @@ pub struct MatchConfig{
 }
 
 
-struct MatchState{
-    state : Position,
-    valid_moves : Vec<Ply>,
-    is_won : Option<Player>,
 
-    history : Vec<HistoryEntry>,
-}
-
-impl MatchState{
-    #[allow(dead_code)]
-    fn setup()->MatchState{
-        Self::setup_from(Position::setup())
-    }
-
-    fn setup_from(state : Position) -> MatchState{
-        let valid_moves = state.valid_moves();
-        MatchState{
-            state,
-            valid_moves,
-            is_won : None,
-            history : vec![]
-        }
-    }
-
-    fn refresh(&mut self){
-        self.valid_moves = self.state.valid_moves();
-        self.is_won = self.state.is_won();
-    }
-
-    fn is_won(&self) -> Option<Player>{
-        self.is_won
-    }
-
-    fn apply_move(&mut self, ply : Ply){
-        assert!(self.is_won.is_none());
-
-        let entry = self.state.compute_history_entry(ply, self.current_captured());
-        self.history.push(entry);
-
-        self.state.apply_move(ply);
-        self.refresh();
-    }
-
-
-    fn current_captured(&self) -> HashMap<Player,Captured>{
-        HashMap::from([
-            (Player::White, self.current_captured_color(Player::White)),
-            (Player::Black, self.current_captured_color(Player::Black)),
-        ])
-    }
-    fn current_captured_color(&self, color : Player) -> Captured{
-        if let Some(last_entry) = self.history.last(){
-            last_entry.captured_after.get(&color).unwrap().clone()
-        } else {
-            Captured::empty()
-        }
-    }
-
-    fn to_play(&self) -> Player{
-        self.state.to_play
-    }
-
-    fn draw_position(&self, position : &Position, captures : &HashMap<Player,Captured>, assets : &Assets, arrows_alpha : f32){
-        if arrows_alpha > 0.001{
-            position.draw_attacks(false, arrows_alpha);
-        }
-        position.draw(assets.pieces, assets.font, false, false, false);
-        for (&color, caps) in captures{
-            caps.draw(color, assets);
-        }
-        
-    }
-
-    fn draw_present(&self, assets : &Assets, arrows_alpha : f32){
-        self.draw_position(&self.state, &self.current_captured(), assets, arrows_alpha);
-    }
-
-    fn draw_past(&self, index : usize, assets : &Assets, arrows_alpha : f32) -> Result<(),()>{
-        if let Some(entry) = self.history.get(index){
-            entry.ply.from_tile.draw_highlight_fill(Color::from_hex(0x95eeee), false);
-            entry.ply.to_tile.draw_highlight_fill(Color::from_hex(0xa0ffff), false);
-            for (tile,_) in &entry.kills{
-                tile.draw_highlight_fill(Color::from_hex(0xddbbbb), false);
-            }
-            
-            
-            self.draw_position(&entry.state_after, &entry.captured_after, assets, arrows_alpha);
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-
-    fn state_clone(&self) -> Position{
-        self.state.clone()
-    }
-
-    fn undo_moves(&mut self, count : usize){
-        (0..count).for_each(|_|
-            if let Some(entry) = self.history.pop(){
-                self.state = entry.state_before;
-            }
-        );
-
-        self.refresh();
-    }
-
-    
-
-}
 
 #[derive(Clone, Copy)]
 enum Decision{
@@ -261,28 +153,6 @@ impl Gamer for Bot{
     }
 
     fn process(&mut self, _ui : &MqUi, _as_player : Player){
-        // let (x,y) = as_player.ui_info_pos().into();
-
-        // let tag = format!("Bot {} {}",
-        //     if let Some(lud) = self.last_used_depth{
-        //         format!("({}-ply depth)", lud)
-        //     } else {"".to_string()},
-        //     match self.result_future{
-        //         None => "",
-        //         Some(..) => "thinking..."
-        //     }
-        // );
-
-        // let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
-        // draw_text_ex(
-        //     &tag,
-        //     x-3.0,
-        //     y,
-        //     TextParams{font,font_scale,font_scale_aspect,font_size,
-        //         color : Color::from_hex(0x111111),
-        //         ..Default::default()
-        //     }
-        // );
     }
 
     fn avatar_offset(&self) -> usize {1}
@@ -427,8 +297,8 @@ impl MoveAnimState{
         let mut kill_copy_state = drawing_state.clone();
         kill_copy_state.stage_translate(ply);
 
-        let defending = kill_copy_state.to_play.flip();
-        let kills : Vec<(Tile, Piece)> = kill_copy_state.stage_attack_scan(drawing_state.to_play)
+        let defending = kill_copy_state.to_play().flip();
+        let kills : Vec<(Tile, Piece)> = kill_copy_state.stage_attack_scan(drawing_state.to_play())
             .into_iter()
             .map(|(t,sp)|(t,Piece{color:defending,species:sp})).collect();
 
@@ -470,7 +340,7 @@ enum DisplayMode{
 struct GameApp<'a>{
     assets : &'a Assets,
     
-    game_state : MatchState,
+    match_state : MatchState,
     
     piece_tex : Texture2D,
     
@@ -494,6 +364,8 @@ struct GameApp<'a>{
     btn_tile_letters : Button,
     btn_toggle_lines : Button,
     btn_exit : Button,
+
+    btn_rulesheet : Button,
 
     display_mode : DisplayMode,
 
@@ -549,7 +421,7 @@ impl<'a> GameApp<'a>{
         let app_state = GameApp{
             assets,
             
-            game_state : MatchState::setup_from(starting_position),
+            match_state : MatchState::setup_from(starting_position),
 
             display_mode : DisplayMode::Present,
 
@@ -588,6 +460,11 @@ impl<'a> GameApp<'a>{
                 "Quit".to_string()
             ),
 
+            btn_rulesheet : Button::new(
+                assets.btn_rules, 
+                Rect::new(7.5,5.0,1.0,1.0), 
+                "Rules".to_string()),
+
             poll_history_scroll : false,
         };
 
@@ -597,7 +474,9 @@ impl<'a> GameApp<'a>{
     }
     
     fn ask(&mut self){
-        self.gamers.get_mut(&self.game_state.to_play()).unwrap().assign_puzzle(self.game_state.state.clone());
+        self.gamers.get_mut(&self.match_state.to_play()).unwrap().assign_puzzle(
+            self.match_state.state_clone()
+        );
         self.app_state = GameStateMachine::Polling;
     }
 
@@ -610,9 +489,9 @@ impl<'a> GameApp<'a>{
 
         
         self.assets.piece_slide.play();
-        self.app_state = GameStateMachine::Animating(MoveAnimState::new(ply,self.game_state.state_clone()));
+        self.app_state = GameStateMachine::Animating(MoveAnimState::new(ply,self.match_state.state_clone()));
 
-        self.game_state.apply_move(ply);
+        self.match_state.apply_move(ply);
         self.last_touched_tiles = Some([ply.from_tile,ply.to_tile]);
 
         self.poll_history_scroll = true;
@@ -620,7 +499,7 @@ impl<'a> GameApp<'a>{
     }
 
     fn undo_until_human(&mut self){
-        if self.gamers.get_mut(&self.game_state.to_play().flip()).unwrap().allows_takebacks(){
+        if self.gamers.get_mut(&self.match_state.to_play().flip()).unwrap().allows_takebacks(){
             self.undo_moves(1);
         }
         else {
@@ -633,7 +512,7 @@ impl<'a> GameApp<'a>{
     fn undo_moves(&mut self, count : usize){
         self.display_mode = DisplayMode::Present;
 
-        self.game_state.undo_moves(count);
+        self.match_state.undo_moves(count);
         self.poll_history_scroll = true;
     
         self.last_kill_tiles = vec![];
@@ -654,7 +533,7 @@ impl<'a> GameApp<'a>{
 
         let target_smooth_to_play = match self.app_state{
             GameStateMachine::Won { .. } => 0.5,
-            _ => match self.game_state.to_play() {Player::Black => 1.0, Player::White => 0.0}
+            _ => match self.match_state.to_play() {Player::Black => 1.0, Player::White => 0.0}
         };
 
         self.smoothed_to_play +=  (
@@ -687,7 +566,7 @@ impl<'a> GameApp<'a>{
             .show(egui_ctx, |ui| {
                 set_theme(ui);
                 ui.horizontal(|ui|{
-                    let hlen = self.game_state.history.len();
+                    let hlen = self.match_state.history().len();
                     if ui.button("<<").clicked(){
                         self.display_mode = if hlen > 1{
                             DisplayMode::History { index: 0 }
@@ -728,7 +607,7 @@ impl<'a> GameApp<'a>{
                     ui.set_min_width(150.0);
                     
                     ui.vertical(|ui|{
-                        self.game_state.history.iter().enumerate().chunks(2)
+                        self.match_state.history().iter().enumerate().chunks(2)
                         .into_iter().enumerate().for_each(|(i,plies)|{
                             let move_num = i+1;
                             
@@ -754,7 +633,7 @@ impl<'a> GameApp<'a>{
 
                                     let lbl = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
                                     if lbl.clicked(){
-                                        self.display_mode = if move_index == self.game_state.history.len() - 1{
+                                        self.display_mode = if move_index == self.match_state.history().len() - 1{
                                             DisplayMode::Present
                                         } else {
                                             DisplayMode::History { index: move_index }
@@ -791,8 +670,8 @@ impl<'a> GameApp<'a>{
                 if *time < SETUP_TIME{
                     *time += get_frame_time();
                 } else {
-                    self.game_state.refresh();
-                    if let Some(winner) = self.game_state.is_won(){
+                    self.match_state.refresh();
+                    if let Some(winner) = self.match_state.is_won(){
                         play_sound_once(self.assets.mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
@@ -801,10 +680,10 @@ impl<'a> GameApp<'a>{
                 }
             },
             GameStateMachine::Polling => {
-                if let Some(_winner) = self.game_state.is_won() {
+                if let Some(_winner) = self.match_state.is_won() {
 
                 } else {
-                    let to_move = self.game_state.to_play();
+                    let to_move = self.match_state.to_play();
                     let gamer = self.gamers.get_mut(&to_move).unwrap();
         
                     match gamer.poll_answer() {
@@ -834,7 +713,7 @@ impl<'a> GameApp<'a>{
                     
                     self.last_kill_tiles = anim_state.kills.iter().map(|(t,_)|*t).collect();
 
-                    if let Some(winner) = self.game_state.is_won(){
+                    if let Some(winner) = self.match_state.is_won(){
                         play_sound_once(self.assets.mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
@@ -865,7 +744,7 @@ impl<'a> GameApp<'a>{
                 match self.app_state{
                     GameStateMachine::Won { winner } => {
                         for (player,color) in [(winner,Color::from_hex(0x66dd66)),(winner.flip(),Color::from_hex(0xdd6666))]{
-                            self.game_state.state.get_pieces(player).clone().into_iter().for_each(|(t,_)|{
+                            self.match_state.get_pieces(player).clone().into_iter().for_each(|(t,_)|{
             
                                 t.draw_highlight_fill(color, false);
                             });
@@ -905,9 +784,9 @@ impl<'a> GameApp<'a>{
                 match &self.app_state{
                     GameStateMachine::Animating(anim_state) => {
 
-                        self.game_state.draw_position(
+                        self.match_state.draw_position(
                             &anim_state.drawing_state, 
-                            &self.game_state.current_captured()
+                            &self.match_state.current_captured()
                             , self.assets, self.attack_patterns_alpha);
                         
                         
@@ -936,14 +815,14 @@ impl<'a> GameApp<'a>{
                     _ => {
 
                         
-                        self.game_state.draw_present(&self.assets, self.attack_patterns_alpha);
+                        self.match_state.draw_present(&self.assets, self.attack_patterns_alpha);
                         
                     }
                     };
                 },
             DisplayMode::History { index } => {
-                self.game_state.draw_past(index, self.assets, self.attack_patterns_alpha)
-                .unwrap_or_else(|()| self.game_state.draw_present(self.assets,self.attack_patterns_alpha))
+                self.match_state.draw_past(index, self.assets, self.attack_patterns_alpha)
+                .unwrap_or_else(|()| self.match_state.draw_present(self.assets,self.attack_patterns_alpha))
             }
         };
 
@@ -955,8 +834,8 @@ impl<'a> GameApp<'a>{
         }
 
         for player in [
-                self.game_state.to_play(),
-                self.game_state.to_play().flip()
+                self.match_state.to_play(),
+                self.match_state.to_play().flip()
             ]{
             let gamer = self.gamers.get_mut(&player).unwrap();
             gamer.process(&mqui,player);
@@ -1005,6 +884,10 @@ impl<'a> GameApp<'a>{
         if self.btn_exit.process(&mqui){
             return true;
         };
+
+        if self.btn_rulesheet.process(&mqui){
+            read_rulesheet(&self.assets).await
+        }
 
         
 

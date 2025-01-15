@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use coroutines::start_coroutine;
 
 use macroquad::{audio::{load_sound, play_sound, PlaySoundParams, Sound}, prelude::*};
@@ -40,6 +42,7 @@ pub struct Assets{
     pub btn_exit : Texture2D,
     pub btn_lines : Texture2D,
     pub btn_letters : Texture2D,
+    pub btn_rules : Texture2D,
     pub avatars : Texture2D,
     pub font : Font,
     pub font_bytes : Vec<u8>,
@@ -49,6 +52,8 @@ pub struct Assets{
 
     pub mate : Sound,
     pub capture:Sound,
+
+    pub diagrams : HashMap<&'static str, Texture2D>
 }
 
 impl Assets{
@@ -106,12 +111,31 @@ impl Assets{
         let font_bytes = macroquad::file::load_file(&FONT_PATH)
             .await.unwrap();
 
+        let mut diagrams = HashMap::new();
+        for name in [
+            "board",
+            "mov_flat_white","mov_flat_black",
+            "mov_arm_white","mov_arm_black",
+            "mov_blind_white","mov_blind_black",
+            "mov_star_white","mov_star_black",
+            "attack_pre","attack_post",
+            "stack_pre","stack_post"
+
+        ]{
+            diagrams.insert(name, 
+                load_texture(&format!("diags/{}.png",name)).await.unwrap()
+            );
+        }
+    
+
+
         Assets{
             pieces : load_texture("gfx/pieces_sm.png").await.unwrap(),
             btn_takeback : load_texture("gfx/btn_takeback.png").await.unwrap(),
             btn_exit : load_texture("gfx/btn_exit.png").await.unwrap(),
             btn_lines : load_texture("gfx/btn_lines.png").await.unwrap(),
             btn_letters : load_texture("gfx/btn_letters.png").await.unwrap(),
+            btn_rules : load_texture("gfx/btn_rules.png").await.unwrap(),
             avatars :  load_texture("gfx/avatars.png").await.unwrap(),
             font ,
             font_bytes,
@@ -121,6 +145,7 @@ impl Assets{
 
             mate : load_sound("audio/mate.ogg").await.unwrap(),
             capture : load_sound("audio/bopp.ogg").await.unwrap(),
+            diagrams,
         }
     }
 
@@ -137,4 +162,9 @@ impl Assets{
 
         (self.avatars,avatar_src)
     }
+
+
+
+    
+    
 }

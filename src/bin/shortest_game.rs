@@ -1,7 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use hexstack::{PieceType, Player, Ply, Score, Position};
+use hexstack::tokonoma::{PieceType, Player, Ply, Score, Position};
 
 #[allow(dead_code)]
 fn search_shortest(state : Position, depth : usize) -> Option<Vec<Ply>>{
