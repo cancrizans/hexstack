@@ -10,13 +10,13 @@ pub struct RandomClip{
 }
 
 impl RandomClip{
-    async fn load(paths : Vec<String>) -> Self{
+    async fn load(paths : Vec<String>) -> Result<Self, FileError>{
         let mut clips = vec![];
         for path in paths{
-            clips.push((path.clone(),load_sound(&path).await.unwrap()));
+            clips.push((path.clone(),load_sound(&path).await?));
         };
 
-        RandomClip{clips}
+        Ok(RandomClip{clips})
     }
 
     pub fn play(&self){
@@ -67,8 +67,28 @@ impl Assets{
             clear_background(theme::BG_COLOR);
 
             if time > 0.2{
-                if let Some(assets) = load_co.retrieve(){
-                    return assets;
+                if let Some(result) = load_co.retrieve(){
+                    match result{
+                        Ok(assets) => {return assets;},
+
+                        Err(error) => loop {
+                            clear_background(theme::BG_COLOR);
+                            set_default_camera();
+                            
+                            egui_macroquad::ui(|egui_ctx|{
+                                egui_ctx.set_pixels_per_point(screen_height() / 720.0);
+                                egui_ctx.set_visuals(egui::Visuals::light());
+                                egui::CentralPanel::default()
+                                .show(egui_ctx, |ui|{
+                                    ui.label(
+                                        &format!("Error loading assets: {:?}", error)
+                                    )
+                                });
+                            });
+                            egui_macroquad::draw();
+                            next_frame().await
+                        }
+                    }
                 }
             }
 
@@ -104,12 +124,15 @@ impl Assets{
     }
 
 
-    pub async fn load()->Self{
+    pub async fn load()->Result<Assets,FileError> {
+
+        // unwrap font error because I don't wanna cast
+        // and I can't update mquad :(
         let font = load_ttf_font(FONT_PATH).await.unwrap();
         font.set_filter(FilterMode::Linear);
 
         let font_bytes = macroquad::file::load_file(&FONT_PATH)
-            .await.unwrap();
+            .await?;
 
         let mut diagrams = HashMap::new();
         for name in [
@@ -123,30 +146,30 @@ impl Assets{
 
         ]{
             diagrams.insert(name, 
-                load_texture(&format!("diags/{}.png",name)).await.unwrap()
+                load_texture(&format!("diags/{}.png",name)).await?
             );
         }
     
 
 
-        Assets{
-            pieces : load_texture("gfx/pieces_sm.png").await.unwrap(),
-            btn_takeback : load_texture("gfx/btn_takeback.png").await.unwrap(),
-            btn_exit : load_texture("gfx/btn_exit.png").await.unwrap(),
-            btn_lines : load_texture("gfx/btn_lines.png").await.unwrap(),
-            btn_letters : load_texture("gfx/btn_letters.png").await.unwrap(),
-            btn_rules : load_texture("gfx/btn_rules.png").await.unwrap(),
-            avatars :  load_texture("gfx/avatars.png").await.unwrap(),
+        Ok(Assets{
+            pieces : load_texture("gfx/pieces_sm.png").await?,
+            btn_takeback : load_texture("gfx/btn_takeback.png").await?,
+            btn_exit : load_texture("gfx/btn_exit.png").await?,
+            btn_lines : load_texture("gfx/btn_lines.png").await?,
+            btn_letters : load_texture("gfx/btn_letters.png").await?,
+            btn_rules : load_texture("gfx/btn_rules.png").await?,
+            avatars :  load_texture("gfx/avatars.png").await?,
             font ,
             font_bytes,
-            title : load_texture("gfx/title.png").await.unwrap(),
+            title : load_texture("gfx/title.png").await?,
 
-            piece_slide : RandomClip::load([1,3,4,5,7,8].into_iter().map(|n|format!("audio/slide{}.ogg",n)).collect()).await,
+            piece_slide : RandomClip::load([1,3,4,5,7,8].into_iter().map(|n|format!("audio/slide{}.ogg",n)).collect()).await?,
 
-            mate : load_sound("audio/mate.ogg").await.unwrap(),
-            capture : load_sound("audio/bopp.ogg").await.unwrap(),
+            mate : load_sound("audio/mate.ogg").await?,
+            capture : load_sound("audio/bopp.ogg").await?,
             diagrams,
-        }
+        })
     }
 
     pub fn get_avatar(&self, player : Player, avatar_offset : usize) -> (Texture2D,Rect){

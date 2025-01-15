@@ -53,7 +53,7 @@ async fn main(){
     const FULL_BOARD_SH : (u32,u32) = (420,300);
     const FULL_BOARD_ZOOM : f32 = 0.22;
 
-    let assets = Assets::load().await;
+    let assets = Assets::load().await.unwrap();
 
     let i = Illustration::new(
         FULL_BOARD_ZOOM, "board".to_string(), FULL_BOARD_SH, Vec2::ZERO);
