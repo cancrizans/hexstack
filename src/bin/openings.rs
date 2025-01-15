@@ -1,7 +1,7 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use futures::executor::block_on;
-use hexstack::{Player, State};
+use hexstack::{board::Captured, Player, Position};
 
 // const OPENING_DEPTH : usize = 2;
 const SAMPLES : usize = 100;
@@ -22,7 +22,7 @@ impl Display for SimResults{
 }
 
 #[allow(dead_code)]
-fn simulate(starting_state : State) -> SimResults{
+fn simulate(starting_state : Position) -> SimResults{
     let mut results = SimResults{
         white_victories : 0,
         black_victories : 0,
@@ -69,11 +69,12 @@ fn simulate(starting_state : State) -> SimResults{
 }
 
 fn main(){
-    let state0 = State::setup();
+    let state0 = Position::setup();
+    let caps = HashMap::from_iter([Player::White,Player::Black].map(|p|(p,Captured::empty())));
 
     for first_move in state0.valid_moves(){
         let mut copy = state0.clone();
-        let hentry = copy.compute_history_entry(first_move);
+        let hentry = copy.compute_history_entry(first_move,caps.clone());
 
         println!("1. {} ...", hentry);
 
@@ -83,7 +84,7 @@ fn main(){
             copy.clone().moves_with_score(8, false));
 
         for (response, eval) in los_evaluatos{
-            let hentry2 = copy.compute_history_entry(response);
+            let hentry2 = copy.compute_history_entry(response,caps.clone());
             println!("1. {} {} -- {}",hentry,hentry2,eval.score);
         }
 

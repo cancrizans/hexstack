@@ -1,6 +1,6 @@
 
 
-use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, State, Tall, Tile};
+use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, Position, Tall, Tile};
 use hexstack::PieceType;
 use macroquad::prelude::*;
 
@@ -78,7 +78,7 @@ async fn main(){
     clear_background(theme::BG_COLOR);
     Tile::draw_board(false);
 
-    let state = State::setup();
+    let state = Position::setup();
     state.draw(assets.pieces, assets.font, false,false,false);
 
     i.dump().await;

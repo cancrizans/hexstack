@@ -1,11 +1,10 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use hexstack::{PieceType, Player, Ply, Score, State};
-use hexstack::board::ZobristHash;
+use hexstack::{PieceType, Player, Ply, Score, Position};
 
 #[allow(dead_code)]
-fn search_shortest(state : State, depth : usize) -> Option<Vec<Ply>>{
+fn search_shortest(state : Position, depth : usize) -> Option<Vec<Ply>>{
     if depth == 0{
         return if state.is_won().is_some() {Some(vec![])} else {None}
     }
@@ -28,7 +27,7 @@ fn search_shortest(state : State, depth : usize) -> Option<Vec<Ply>>{
     None
 }
 #[allow(dead_code)]
-fn search_max(state : State, depth : usize) -> (Score,Vec<Ply>){
+fn search_max(state : Position, depth : usize) -> (Score,Vec<Ply>){
     if depth == 0{
         return (state.eval_heuristic(),vec![]);
     }
@@ -47,7 +46,7 @@ fn search_max(state : State, depth : usize) -> (Score,Vec<Ply>){
     .unwrap()
 }
 #[allow(dead_code)]
-fn search_min(state : State, depth : usize) -> (Score,Vec<Ply>){
+fn search_min(state : Position, depth : usize) -> (Score,Vec<Ply>){
     if depth == 0{
         return (state.eval_heuristic(),vec![]);
     }
@@ -70,15 +69,15 @@ fn search_min(state : State, depth : usize) -> (Score,Vec<Ply>){
 }
 
 #[allow(dead_code)]
-struct Searcher(HashMap<ZobristHash,(Score,Vec<Ply>)>);
+struct Searcher(HashMap<u64,(Score,Vec<Ply>)>);
 impl Searcher{
     #[allow(dead_code)]
     fn new()->Searcher{
         Searcher(HashMap::new())
     }
     #[allow(dead_code)]
-    fn search_max(&mut self, state : State, depth : usize) -> (Score,Vec<Ply>){
-        match self.0.entry(state.zobrist_hash()){
+    fn search_max(&mut self, state : Position, depth : usize) -> (Score,Vec<Ply>){
+        match self.0.entry(state.tabulation_hash()){
             Entry::Occupied(entry) => entry.get().clone(),
             Entry::Vacant(vacancy) => {
                 let value = search_max(state, depth);
@@ -88,8 +87,8 @@ impl Searcher{
         }
     }
     #[allow(dead_code)]
-    fn search_min(&mut self, state : State, depth : usize) -> (Score,Vec<Ply>){
-        match self.0.entry(state.zobrist_hash()){
+    fn search_min(&mut self, state : Position, depth : usize) -> (Score,Vec<Ply>){
+        match self.0.entry(state.tabulation_hash()){
             Entry::Occupied(entry) => entry.get().clone(),
             Entry::Vacant(vacancy) => {
                 let value = search_min(state, depth);
@@ -100,8 +99,8 @@ impl Searcher{
     }
 }
 
-
-fn search_shortest_path(state : State, depth : usize) -> Option<Vec<Ply>>{
+#[allow(dead_code)]
+fn search_shortest_path(state : Position, depth : usize) -> Option<Vec<Ply>>{
     if depth == 0{
         return if state.is_won().is_some() {Some(vec![])} else {None}
     }
@@ -143,7 +142,7 @@ fn search_shortest_path(state : State, depth : usize) -> Option<Vec<Ply>>{
 fn main(){
     for depth in 0..=16{
         println!("Searching depth {}...",depth);
-        let state = State::setup();
+        let state = Position::setup();
         let mut searcher = Searcher::new();
         let (score,mut plies) = searcher.search_min(state, depth);
         println!("{}",score);

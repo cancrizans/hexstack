@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use egui::{Color32, FontFamily, FontId, Id, Layout, Margin, TextStyle, Ui};
-use crate::{Ply, EvalResult, State, Tile};
+use crate::{Ply, EvalResult, Position, Tile};
 use itertools::Itertools;
 use macroquad::prelude::*;
 
@@ -9,8 +9,8 @@ use macroquad::experimental::coroutines::{start_coroutine,Coroutine};
 
 
 struct EngineDebugApp{
-    history : Vec<(State,Ply)>,
-    game_state : State,
+    history : Vec<(Position,Ply)>,
+    game_state : Position,
     computing_moves_future : Option<Coroutine<Vec<(Ply,EvalResult)>>>,
     available_moves : Option<Vec<(Ply,EvalResult)>>,
     evaluating_depth : usize,
@@ -47,7 +47,7 @@ impl EngineDebugApp{
 
         let app_state = EngineDebugApp{
             history : vec![],
-            game_state : State::setup(),
+            game_state : Position::setup(),
             computing_moves_future : None,
             available_moves : None,
             piece_tex : load_texture("gfx/pieces_sm.png").await.unwrap(),
@@ -69,7 +69,7 @@ impl EngineDebugApp{
     }
     
     fn setup(&mut self){
-        self.game_state = State::setup();
+        self.game_state = Position::setup();
         self.history = vec![];
         self.refresh();
     }

@@ -1,12 +1,10 @@
 #![feature(hash_extract_if)]
 use core::f32;
 
-use std::collections::{HashSet, VecDeque};
-use std::usize::MAX;
+use std::collections::HashSet;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::{collections::HashMap, fmt::Display};
-use std::collections::hash_map::Entry::{self, Occupied, Vacant};
-use futures::future::BoxFuture;
-use futures::FutureExt;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 use macroquad::prelude::*;
 
 pub mod arrows;
@@ -14,7 +12,7 @@ pub mod board;
 
 pub use board::{Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
 
-use board::{ BitSet, BoardMap, Captured, DoubleCounterBitset, PieceMap, ZobristHash, BOARD_RADIUS};
+use board::{ BitSet, Captured, DoubleCounterBitset, PieceMap, BOARD_RADIUS};
 use ::rand::seq::SliceRandom;
 pub mod engine_debug;
 pub mod game;
@@ -104,27 +102,26 @@ impl EvalResult{
 
 
 
-#[derive(Clone)]
-pub struct State{
+#[derive(Clone,Debug, PartialEq, Eq)]
+pub struct Position{
     // board : Board,
     to_play : Player,
     // pieces : BoardMap<Piece>,
 
     pieces : [PieceMap;2],
 
-    captured : HashMap<Player,Captured>,
-
-    zobrist_hash : ZobristHash,
 }
 
 
-impl State{
+impl Position{
+    #[inline]
     fn get_pieces(&self, color : Player) -> &PieceMap{
         match color{
             Player::White => &self.pieces[0],
             Player::Black => &self.pieces[1]
         }
     }
+    #[inline]
     fn get_pieces_mut(&mut self, color : Player) -> &mut PieceMap{
         match color{
             Player::White => &mut self.pieces[0],
@@ -134,19 +131,22 @@ impl State{
 
   
 
-    pub fn zobrist_hash(&self) -> ZobristHash{
-        self.zobrist_hash
+    pub fn tabulation_hash(&self) -> u64{
+        let mut s = DefaultHasher::new();
+        self.get_pieces(Player::White).hash(&mut s);
+        self.get_pieces(Player::Black).hash(&mut s);
+        self.to_play.hash(&mut s);
+        s.finish()
     }
 
-    pub fn setup()->State{
-        // let board = Board::build();
+    pub fn setup()->Position{
         
         let mut white_pieces = PieceMap::EMPTY;
         let mut black_pieces = PieceMap::EMPTY;
 
         let sbr = BOARD_RADIUS as i8;
 
-        let mut zobrist_hash = ZobristHash::CLEAR;
+
         [
             (0,sbr, PieceType::Stack(Tall::Hand)),
             (1,sbr-1, PieceType::Stack(Tall::Star)),
@@ -160,15 +160,15 @@ impl State{
             let z = -x-y;
             let t = Tile::from_xyz(x, y, z).unwrap();
             black_pieces.set(t, species);
-            zobrist_hash.toggle_piece(&t, Player::Black, species);
+
             white_pieces.set(t.antipode(), species);
-            zobrist_hash.toggle_piece(&t, Player::White, species);
+
         });
 
         
         let pieces = [white_pieces,black_pieces];
 
-        State {  to_play: Player::White, pieces , captured:HashMap::from([(Player::White,Captured::empty()),(Player::Black,Captured::empty())]) , zobrist_hash}
+        Position {  to_play: Player::White, pieces }
     }
 
     pub fn draw_attacks(&self, flip_board : bool, alpha:f32){
@@ -186,10 +186,6 @@ impl State{
                     let start = origin + dir * 0.6;
                     let end = target_cent-dir * 0.6;
 
-                    // let orth_disp = vec2(-dir.y,dir.x) * 0.1 * match p.color{
-                    //     Player::Black => -1.0,
-                    //     Player::White => 1.0,
-                    // };
 
                     let mut color = p.color.to_color();
                     color.a = alpha;
@@ -212,7 +208,7 @@ impl State{
             draw_attacks : bool,
             draw_tile_numbers : bool,
         ){
-        // Tile::draw_board(flip_board);
+        
 
         if draw_attacks {
             self.draw_attacks(flip_board,1.0)
@@ -228,21 +224,9 @@ impl State{
 
         
         
-        self.captured.iter().for_each(|(player,capts,)|{
-            let n_capt = 0.5*(capts.count().saturating_sub(1) as f32);
-            let basey = match player {Player::White => 4.7, Player::Black => -4.7};
-            capts.iter().enumerate().for_each(|(i,piece_type)|{
-                let p = Piece{color : player.flip(), species : piece_type};
-                let x = 0.6*(i as f32 - n_capt);
-                let y = basey;
-                p.draw(x,y, piece_tex, 0.5);
-                // (0..count).for_each(|it|{
-                //     // let y = basey + 0.6*(it as f32);
-                    
-                // });
-                
-            });
-        });
+        // self.captured.iter().for_each(|(player,capts,)|{
+            
+        // });
         
 
         if draw_tile_numbers {
@@ -353,48 +337,20 @@ impl State{
 
         // self.zobrist_hash = hash;
 
-        let (pulled, original, remainder) = pieces.pull_moving_piece(from_tile);
-        self.zobrist_hash.toggle_piece(&from_tile, color, original);
-        if let Some(remainder) = remainder{
-            self.zobrist_hash.toggle_piece(&from_tile, color, remainder);
-        }
+        let pulled = pieces.pull_moving_piece(from_tile);
+        // self.zobrist_hash.toggle_piece(&from_tile, color, original);
+        // if let Some(remainder) = remainder{
+        //     self.zobrist_hash.toggle_piece(&from_tile, color, remainder);
+        // }
 
         pulled
     }
 
     #[inline]
-    pub fn stage_attack_scan(&mut self, attacking_player : Player) -> impl Iterator<Item = (Tile,PieceType)> + '_{
-        let defending_player = attacking_player.flip();
-        let double_attacked_tiles = self.double_attack_map(attacking_player);
-
-        // let target_tiles : HashSet<Tile> = HashSet::from_iter(
-        //     self.get_pieces(defending_player).iter()
-        //     .map(|(t,_)|*t)
-        // );
-
-        // let killed_tiles : Vec<Tile> = target_tiles.intersection(&double_attacked_tiles).map(|t|*t).collect();
-
-        // double_attacked_tiles.into_iter()
-        //     .flat_map(move |datile|{
-        //         match self.get_pieces_mut(defending_player).entry(datile){
-        //             Entry::Vacant(..) => None,
-        //             Entry::Occupied(entry) => {
-        //                 let killed_piece = entry.remove();
-        //                 self.zobrist_hash.toggle_piece(&datile, defending_player,killed_piece);
-
-        //                 Some((datile, killed_piece))
-        //             }
-        //         }
-        //     })
-
-        self.get_pieces_mut(defending_player).kill(double_attacked_tiles)
-
-        // killed_tiles.into_iter().map(move |t|{
-        //         let killed_piece = self.get_pieces_mut(defending_player).remove(&t).unwrap();
-        //         self.zobrist_hash.toggle_piece(&t, defending_player,killed_piece);
-        //         (t,killed_piece)
-        //     })
-            
+    pub fn stage_attack_scan(&mut self, attacking : Player) -> PieceMap{
+        let double_attacked_tiles = self.double_attack_map(attacking);
+        let defending = attacking.flip();
+        self.get_pieces_mut(defending).kill(double_attacked_tiles)
     }
 
     pub fn to_play(&self)->Player{
@@ -406,44 +362,10 @@ impl State{
         let (from_tile,to_tile) = (ply.from_tile, ply.to_tile);
 
         
-        let moving_piece = self.pull_moving_piece(self.to_play,from_tile);
+        let moving_piece = self.pull_moving_piece(active,from_tile);
 
-        let (original_in_dest, final_in_dest) = self.get_pieces_mut(self.to_play).toss(ply.to_tile, moving_piece);
+        self.get_pieces_mut(active).toss(to_tile, moving_piece);
 
-        if let Some(original) = original_in_dest{
-            self.zobrist_hash.toggle_piece(&ply.to_tile, self.to_play, original);
-        }
-        self.zobrist_hash.toggle_piece(&ply.to_tile, self.to_play, final_in_dest);
-
-        // let mut hash = self.zobrist_hash;
-
-        // match self.get_pieces_mut(self.to_play).entry(to_tile){
-        //     Vacant(vacancy) => {
-        //         hash.toggle_piece(&to_tile,active, moving_piece);
-        //         vacancy.insert(moving_piece);
-        //     },
-
-        //     Occupied(mut entry) => {
-        //         let occupant = entry.get();
-                
-        //         match occupant{
-        //             PieceType::Flat => (),
-        //             _ => panic!()
-        //         };
-        //         match moving_piece{
-        //             PieceType::Lone(moving_tall) => {
-        //                 hash.toggle_piece(&to_tile,active, *occupant);
-        //                 let tgt_replacement = PieceType::Stack(moving_tall);
-        //                 hash.toggle_piece(&to_tile,active, tgt_replacement);
-        //                 entry.insert(tgt_replacement);
-        //             },
-        //             _ => panic!("Non-lone moving piece moving into flat.")
-        //         }
-
-                
-        //     }
-        // } ;
-        // self.zobrist_hash = hash;
     }
 
     
@@ -453,32 +375,20 @@ impl State{
 
         let attacking_player = self.to_play;
 
-        let kills : Vec<(Tile, PieceType)> = self.stage_attack_scan(attacking_player).collect();
-        let has_captured =  kills.len() > 0;
-
-        self.captured.get_mut(&attacking_player).unwrap()
-        .extend(kills.into_iter()
-            .flat_map(|(_,killed_piece)|{
-                killed_piece.unstack()
-            })
-            
-        );
-
+        let kills : PieceMap = self.stage_attack_scan(attacking_player);
+        let has_captured =  kills.is_not_empty();
 
         self.to_play = self.to_play.flip();
-        self.zobrist_hash.toggle_to_move();
-
-
-        //not good
-        // self.recompute_hash();
 
         MoveApplyReport{
             has_captured
         }
     }
 
-    pub fn compute_history_entry(&self, ply : Ply) -> HistoryEntry{
+    pub fn compute_history_entry(&self, ply : Ply, captured_before : HashMap<Player,Captured>) -> HistoryEntry{
         let state_before = self.clone();
+        let active = state_before.to_play();
+
 
         let moves = state_before.valid_moves();
 
@@ -486,8 +396,15 @@ impl State{
         
         let mut state_simulate_kills = state_before.clone();
         state_simulate_kills.stage_translate(ply);
-        let kills : Vec<(Tile, PieceType)> = state_simulate_kills.stage_attack_scan(state_simulate_kills.to_play).collect();
+        let killmap = 
+            state_simulate_kills.stage_attack_scan(state_simulate_kills.to_play);
+            
+        let kills = killmap.clone().into_iter().collect();
 
+        let mut captured_after = captured_before;
+
+        
+        captured_after.get_mut(&active).unwrap().extend(killmap.into_iter().map(|(_,species)|species));
 
         let disambiguate = match moves.iter().filter(|&av|{
             (av.to_tile == ply.to_tile) & 
@@ -504,7 +421,7 @@ impl State{
         state_after.apply_move(ply);
 
         HistoryEntry{
-            ply, state_before, state_after, moved_piece, disambiguate, kills
+            ply, state_before, state_after, moved_piece, disambiguate, kills, captured_after
         }
     }
 
@@ -527,28 +444,12 @@ impl State{
 
     #[inline]
     pub fn double_attack_map(&self, attacking_player : Player) -> BitSet{
-        // let mut single_attacks = BitSet::new();
-        // let mut double_attacks = BitSet::new();
-
         let attacking_pieces = self.get_pieces(attacking_player);
-
         let mut double_attacks = DoubleCounterBitset::new();
-
         attacking_pieces.clone().into_iter()
         .for_each(|(t,species)|
             double_attacks.add(BitSet::move_destinations_from_tile(t, attacking_player, species))
-            // neighbours_attack(t,Piece{color:attacking_player,species}).into_iter().flatten()
-            // .for_each(|n|
-            //     if single_attacks.remove(&n){
-            //         double_attacks.set(&n);
-            //     } else{
-            //         single_attacks.set(&n);
-            //     }
-                
-            // )
         );
-
-        // double_attacks
         double_attacks.get_doubles()
     }
 
@@ -777,7 +678,7 @@ impl State{
     ) -> EvalResult{
         // const NODES_PER_FRAME : usize = 500;
         
-        if let Some(score) = transp.query(self.zobrist_hash, depth){
+        if let Some(score) = transp.query(self.tabulation_hash(), depth){
             return EvalResult{score, nodes : 1}
         }
 
@@ -829,9 +730,9 @@ impl State{
 
                         let sub_qsearch_depth = if nonquiescent {qsearch_depth+1} else {qsearch_depth};
                         
-                        let sub_zobhash = copy.zobrist_hash.clone();
+                        let sub_tabhash = copy.tabulation_hash();
                         let sub_result = copy.eval_alphabeta(sub_depth, alpha, beta, transp, sub_qsearch_depth);
-                        transp.insert(sub_zobhash, sub_depth, sub_result.score);
+                        transp.insert(sub_tabhash, sub_depth, sub_result.score);
 
                         let sub_score = sub_result.score.propagate();
                         nodes_count += sub_result.nodes;
@@ -897,19 +798,7 @@ impl State{
     }
 
     fn recompute_hash(&mut self){
-        let mut hash = ZobristHash::CLEAR;
 
-        for color in [Player::White,Player::Black]{
-            self.get_pieces(color).clone().into_iter().for_each(|(tile,species)|
-                hash.toggle_piece(&tile, color, species)
-            );
-        }
-        match self.to_play{
-            Player::White => {},
-            Player::Black => {self.zobrist_hash.toggle_to_move();}
-        }
-
-        self.zobrist_hash = hash;
     }
 }
 
@@ -917,14 +806,14 @@ pub struct MoveApplyReport{
     has_captured : bool
 }
 
-struct TranspositionalTable(HashMap<ZobristHash, (usize,Score)>);
+struct TranspositionalTable(HashMap<u64, (usize,Score)>);
 
 impl TranspositionalTable{
     pub fn new()->Self{
         Self(HashMap::new())
     }
 
-    pub fn query(&self, hash : ZobristHash, min_depth : usize) -> Option<Score>{
+    pub fn query(&self, hash : u64, min_depth : usize) -> Option<Score>{
         if let Some((depth, score)) = self.0.get(&hash){
             if *depth >= min_depth {
                 Some(*score)
@@ -932,7 +821,7 @@ impl TranspositionalTable{
         } else {None}
     }
 
-    pub fn insert(&mut self, hash : ZobristHash, depth : usize, score : Score){
+    pub fn insert(&mut self, hash : u64, depth : usize, score : Score){
         match self.0.entry(hash){
             Vacant(vacancy) => {vacancy.insert((depth,score));},
 
@@ -975,13 +864,15 @@ pub fn draw_attack_map(player : Player, attack_map : &HashMap<Tile, u8>, flip_bo
 
 #[derive(Clone)]
 pub struct HistoryEntry{
-    state_before : State,
-    state_after : State,
+    state_before : Position,
+    state_after : Position,
     ply : Ply,
     moved_piece : PieceType,
 
     disambiguate : bool,
     kills : Vec<(Tile,PieceType)>,
+
+    captured_after : HashMap<Player,Captured>,
 }
 
 impl Display for HistoryEntry{
@@ -1010,27 +901,31 @@ impl Display for HistoryEntry{
     }
 }
 
+#[cfg(test)]
 mod tests{
     use super::*;
     #[test]
     fn test_zobrist(){
         let mut counter = 0;
         let mut rng = ::rand::thread_rng();
+        let mut already_seen = HashMap::new();
         const MAX_ITS : usize = 10000;
         while counter < MAX_ITS{
-            let mut state = State::setup();
+            let mut state = Position::setup();
 
             while let Some(&ply) = state.valid_moves().choose(&mut rng){
                 state.apply_move(ply);
 
-                let hash_stored = state.zobrist_hash.clone();
-                let hash_check = {
-                    let copy = state.clone();
-                    state.recompute_hash();
-                    copy.zobrist_hash
-                };
+                let tabhash = state.tabulation_hash();
 
-                assert_eq!(hash_stored,hash_check);
+                match already_seen.entry(tabhash){
+                    Occupied(entry) => {
+                        assert_eq!(*entry.get(),state)
+                    },
+                    Vacant(vacancy) => {
+                        vacancy.insert(state.clone());
+                    }
+                };
                 
 
                 counter += 1;

@@ -1,18 +1,18 @@
 use std::iter::once;
 
-use crate::{assets::Assets, theme, Piece, PieceType, Player, State, Tile};
+use crate::{assets::Assets, theme, Piece, PieceType, Player, Position, Tile};
 use macroquad::prelude::*;
 
 #[derive(Clone)]
 pub struct PositionEditor{
-    state : State,
+    state : Position,
     selected_brush : Option<Piece>,
 }
 
 impl PositionEditor{
     pub fn setup() -> PositionEditor{
         PositionEditor{
-            state : State::setup(),
+            state : Position::setup(),
             selected_brush : None
         }
     }
@@ -121,7 +121,7 @@ impl PositionEditor{
         }
     }
 
-    pub fn get_state_clone(&self) -> State{
+    pub fn get_state_clone(&self) -> Position{
         self.state.clone()
     }
 

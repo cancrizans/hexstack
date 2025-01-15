@@ -1,102 +1,137 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
-use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display, io::BufRead, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
+use std::{collections::{hash_map::{Entry, ExtractIf}, HashMap}, fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
 use lazy_static::lazy_static;
 use ::rand::Rng;
 use memoize::memoize;
+use crate::{arrows::draw_arrow, assets::Assets};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct Tile(u8);
+
 
 pub const BOARD_RADIUS : i8 = 3;
 const BOARD_SHORT_RADIUS : i8 = 2;
 
+const BOARD_SIZE : usize = 29;
+
+const ROW_OFFSET : u8 = 12;
+const BOARD_BITS : [u8;BOARD_SIZE] = {
+    let mut bits = [0;29];
+
+    let mut i = 0;
+    let mut x = 0;
+    while x < 5 {
+        let mut y = 0;
+        while y < 7 {
+            let z = -5+(x as i32)+(y as i32);
+            if (z >= -3) & (z<=3) {
+                bits[i] = ROW_OFFSET * x + y;
+                i+=1;
+            
+            }
+            y+=1;
+        }
+        x+=1;
+    }
+    
+    bits
+};
+// #[inline]
+// const fn tile_to_bit(tile : &Tile) -> u8{
+//     tile.uy() + tile.ux() * Self::ROW_OFFSET
+// }
+
+// const ROW_OFFSET : u8 = ROW_OFFSET;
+
+// #[inline]
+// const fn bit_to_tile(bit : u8) -> Tile{
+//     Tile::from_uxy(bit / Self::ROW_OFFSET, bit % Self::ROW_OFFSET)
+// } 
 
 
-#[allow(dead_code)]
-pub const BOARD_SIZE : usize = 29;
 
-use crate::arrows::draw_arrow;
-
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct Tile(u8);
 impl Tile{
     
-    //mapping coordinate range -3..=3 to 0..=6
-    //allows us to write an (x,y) Tile in a u8 like this
-    // 0YYY0XXX
-    // with the 3th and 7th unset bits for padding.
-    // if delta-x is expressed in 3-bit 2's complement
-    // then we can do shifts in a single sum + mask.
     const OFF_Y : i8 = BOARD_RADIUS;
     const OFF_X : i8 = BOARD_SHORT_RADIUS;
 
     #[inline]
     pub const fn new(value : u8) -> Option<Tile>{
-        //assumption that value already has bits 3 and 7 unset.
-        let ux_hi = value << 4;
+        if BitSet::BOARD_MASK.get_at_bit(value){
+            Some(Tile(value))
+        } else {
+            None
+        }
+        // //assumption that value already has bits 3 and 7 unset.
+        // let ux_hi = value << 4;
 
-        if !(ux_hi < 0x50) {
-            return None
-        }
-        if !(value < 0x70){
-            return None
-        }
+        // if !(ux_hi < 0x50) {
+        //     return None
+        // }
+        // if !(value < 0x70){
+        //     return None
+        // }
 
-        // this is 5-z placed in high nibble
-        let uz_sh = (value & 0xF0) + ux_hi;
-        if ! ((0x20 <= uz_sh) & (uz_sh <= 0x80)){
-            return None
-        }
+        // // this is 5-z placed in high nibble
+        // let uz_sh = (value & 0xF0) + ux_hi;
+        // if ! ((0x20 <= uz_sh) & (uz_sh <= 0x80)){
+        //     return None
+        // }
 
         
-        Some(Tile(value))
+        // Some(Tile(value))
         
     }
 
     #[inline]
     pub const fn from_uxy(ux : u8, uy : u8)-> Tile{
-        Tile((uy << 4) | ux)
+        // Tile((uy << 4) | ux)
+
+        Tile(ux * ROW_OFFSET + uy)
     }
 
     #[inline]
     pub const fn code(&self) -> u8{
-        let (ux, uy) = (self.ux(),self.uy());
+        self.0
+        // let (ux, uy) = (self.ux(),self.uy());
 
-        let shift = match ux{
-            4 => 0,
-            3 => 5,
-            2 => 5+6,
-            1 => 5+6+7 - 1,
-            0 => 5+6+7+6 - 2,
+        // let shift = match ux{
+        //     4 => 0,
+        //     3 => 5,
+        //     2 => 5+6,
+        //     1 => 5+6+7 - 1,
+        //     0 => 5+6+7+6 - 2,
             
-            _ => unreachable!()
-        };
+        //     _ => unreachable!()
+        // };
 
-        shift + uy
+        // shift + uy
     }
 
-    pub fn glyph(&self) -> char{
-        "abcdefghijklmnopqrstuvwxyzøñł".chars().nth(self.code() as usize).unwrap()
-    }
+    
 
     #[inline]
     pub const fn from_code(code : u8) -> Tile{
-        let (ux,shift) = match code{
-            0..5 =>  (5,0),
-            5..11 => (4,5),
-            11..18 => (3,11),
-            18..24 => (2,17),
-            24..29 => (1,22),
-            _ => unreachable!()
-        };
-        let uy = code - shift;
+        Tile(code)
+        // let (ux,shift) = match code{
+        //     0..5 =>  (5,0),
+        //     5..11 => (4,5),
+        //     11..18 => (3,11),
+        //     18..24 => (2,17),
+        //     24..29 => (1,22),
+        //     _ => unreachable!()
+        // };
+        // let uy = code - shift;
 
-        Tile((uy << 4) | ux)
+        // Tile((uy << 4) | ux)
     }
 
     #[inline]
     const fn ux(&self) -> u8{
-        self.0 & 0xF
+        // self.0 & 0xF
+        self.0 / ROW_OFFSET
     }
 
     #[inline]
@@ -106,7 +141,8 @@ impl Tile{
 
     #[inline]
     const fn uy(&self) -> u8{
-        self.0 >> 4
+        // self.0 >> 4
+        self.0 % ROW_OFFSET
     }
 
     #[inline]
@@ -381,9 +417,9 @@ impl Tile{
     }
 
     const fn shift(self, delta : Delta) -> Option<Tile>{
-        let value = self.0.wrapping_add(delta.0) & 0b11110111;
-        Tile::new(value)
-        // Tile::from_xyz(self.x()+delta.dx(), self.y()+delta.dy(), self.z()+delta.dz())
+        // let value = self.0.wrapping_add(delta.0) & 0b11110111;
+        // Tile::new(value)
+        Tile::from_xyz(self.x()+delta.dx(), self.y()+delta.dy(), self.z()+delta.dz())
     }
 
     
@@ -692,21 +728,6 @@ impl Piece{
 
     }
 
-    pub fn attack(&self) -> u8{
-        match self.species {
-            PieceType::Flat | PieceType::Lone(..) => 1,
-            PieceType::Stack(..) => 1
-        }
-    }
-
-    pub const fn defence(&self) -> u8{
-        2
-        // match self.species{
-        //     PieceType::Flat | PieceType::Lone(..) => 2,
-        //     PieceType::Stack(..) => 2
-        // }
-    }
-
     pub fn unstack(self) -> Box<dyn Iterator<Item=Piece>>{
         let color = self.color;
         match self.species{
@@ -917,9 +938,26 @@ impl Captured{
     pub fn extend(&mut self, iterator : impl IntoIterator<Item = PieceType>){
         iterator.into_iter().for_each(|pt| self.push(pt))
     }
+
+    pub fn draw(&self, color : Player, assets :  &Assets){
+        let capts = self;
+        let n_capt = 0.5*(capts.count().saturating_sub(1) as f32);
+        let basey = match color {Player::White => 4.7, Player::Black => -4.7};
+        capts.iter().enumerate().for_each(|(i,piece_type)|{
+            let p = Piece{color : color.flip(), species : piece_type};
+            let x = 0.6*(i as f32 - n_capt);
+            let y = basey;
+            p.draw(x,y, assets.pieces, 0.5);
+            // (0..count).for_each(|it|{
+            //     // let y = basey + 0.6*(it as f32);
+                
+            // });
+            
+        });
+    }
 }
 
-#[derive(Copy,Clone,PartialEq, Eq)]
+#[derive(Copy,Clone,PartialEq, Eq,Hash, Debug)]
 pub struct BitSet(u64);
 
 impl BitSet{
@@ -928,16 +966,18 @@ impl BitSet{
     }
 
     #[inline]
-    const fn tile_to_bit(tile : &Tile) -> u8{
-        tile.uy() + tile.ux() * Self::ROW_OFFSET
+    const fn count(&self) -> u32{
+        self.0.count_ones()
     }
 
-    const ROW_OFFSET : u8 = 9;
-
+    #[inline]
+    const fn tile_to_bit(tile : &Tile) -> u8{
+        tile.0
+    }
     #[inline]
     const fn bit_to_tile(bit : u8) -> Tile{
-        Tile::from_uxy(bit / Self::ROW_OFFSET, bit % Self::ROW_OFFSET)
-    } 
+        Tile(bit)
+    }
 
     #[inline]
     const fn tile_mask(tile : &Tile) -> BitSet{
@@ -961,8 +1001,11 @@ impl BitSet{
         (*self & Self::tile_mask(location)).is_not_empty()
     }
 
-    pub fn get_at_bit(&self, bit : u8) -> bool{
-        (self.0 & (1<<bit))>0
+    pub const fn get_at_bit(&self, bit : u8) -> bool{
+        match bit{
+            0..64 => (self.0 & (1<<bit))>0,
+            _ => false
+        }
     }
 
     pub fn unset(&mut self, location : &Tile){
@@ -984,16 +1027,23 @@ impl BitSet{
         removed
     }
 
-    const BITS : [u8;29] = [
-          02,03,04,05,06,
-         10,11,12,13,14,15,
-        18,19,20,21,22,23,24,
-         27,28,29,30,31,32,
-          36,37,38,39,40
-    ];
+    
+
+    const BOARD_MASK : BitSet = {
+        let mut mask = BitSet::new();
+
+        let mut i = 0;
+        while i < 29{
+            let bit = BOARD_BITS[i];
+            mask.0 |= 1<<bit;
+            i+=1;
+        }
+
+        mask
+    };
 
     pub fn into_iter(self) -> impl Iterator<Item = Tile>{
-        Self::BITS.into_iter().flat_map(move |bit|{
+        BOARD_BITS.into_iter().flat_map(move |bit|{
             if self.0 & (1<<bit) > 0{
                 Some(Self::bit_to_tile(bit))
             } else {None}
@@ -1005,7 +1055,7 @@ impl BitSet{
     }
 
     pub fn generate_move_destinations(&self, color : Player, species : PieceType) -> BitSet{
-        const M : i32 = BitSet::ROW_OFFSET as i32;
+        const M : i32 = ROW_OFFSET as i32;
 
         let shifts = match species {
             PieceType::Flat => [1,M,-M+1].iter(),
@@ -1034,7 +1084,7 @@ impl BitSet{
             buffer.0 |= shifted;
         };
 
-        buffer
+        buffer & Self::BOARD_MASK
     }
     pub fn move_destinations_from_tile(from_tile : Tile,color : Player, species : PieceType) -> BitSet{
         Self::tile_mask(&from_tile).generate_move_destinations(color, species)
@@ -1091,7 +1141,7 @@ impl DoubleCounterBitset{
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Hash, Debug, PartialEq, Eq)]
 pub struct PieceMap{
     flats : BitSet,
     talls : [BitSet; 2]
@@ -1107,6 +1157,10 @@ impl PieceMap{
         self.flats | self.talls[0] | self.talls[1]
     }
 
+    pub fn count(&self) -> u32{
+        self.occupied().count()
+    }
+
     pub fn locate_lone_flats(&self) -> BitSet{
         self.flats & !(self.talls[0] | self.talls[1])
     }
@@ -1115,22 +1169,10 @@ impl PieceMap{
         !(self.talls[0] | self.talls[1])
     }
 
-    // pub fn iter(&self) -> impl Iterator<Item = (&Tile, &PieceType)>{
-    //     BitSet::BITS.into_iter().flat_map(move |bit|{
-    //         let (flat,tall0,tall1) = (
-    //             self.flats.get_at_bit(bit),
-    //             self.talls[0].get_at_bit(bit),
-    //             self.talls[1].get_at_bit(bit)
-    //         );
-    //         Self::decode_species(flat, tall0, tall1)
-    //         .map(|sp|(BitSet::bit_to_tile(bit),sp))
-            
-    //     })
-    // }
 
     pub fn into_iter(self) -> impl Iterator<Item = (Tile,PieceType)>{
         
-        BitSet::BITS.into_iter().flat_map(move |bit|{
+        BOARD_BITS.into_iter().flat_map(move |bit|{
             let (flat,tall0,tall1) = (
                 self.flats.get_at_bit(bit),
                 self.talls[0].get_at_bit(bit),
@@ -1223,7 +1265,7 @@ impl PieceMap{
     }
     
 
-    pub fn pull_moving_piece(&mut self, location : Tile) -> (PieceType, PieceType, Option<PieceType>){
+    pub fn pull_moving_piece(&mut self, location : Tile) -> PieceType{
         let mask = BitSet::tile_mask(&location);
         let orig_flat = (self.flats & mask).is_not_empty();
 
@@ -1231,27 +1273,24 @@ impl PieceMap{
 
         let orig_tall = Self::decode_tall(orig_tall_bits[0], orig_tall_bits[1]);
 
-        let (pulled, original, remainder) = 
         if orig_flat{
             if let Some(tall) = orig_tall{
                 self.talls[0].set_mask_bool(false,mask);
                 self.talls[1].set_mask_bool(false,mask);
-                (PieceType::Lone(tall) , PieceType::Stack(tall), Some(PieceType::Flat))
+                PieceType::Lone(tall) 
             } else {
                 self.flats.set_mask_bool(false, mask);
-                (PieceType::Flat, PieceType::Flat, None)
+                PieceType::Flat
             }
         } else {
             if let Some(tall) = orig_tall{
                 self.talls[0].set_mask_bool(false,mask);
                 self.talls[1].set_mask_bool(false,mask);
-                (PieceType::Lone(tall), PieceType::Lone(tall), None)
+                PieceType::Lone(tall)
             } else {
                 unreachable!()
             }
-        };
-
-        (pulled, original, remainder)
+        }
     }
 
     fn mask(&self, mask : BitSet) -> Self{
@@ -1264,43 +1303,38 @@ impl PieceMap{
         }
     }
 
-    pub fn kill(&mut self, mask : BitSet) -> impl Iterator<Item = (Tile,PieceType)>{
+    pub fn kill(&mut self, mask : BitSet) -> PieceMap{
         let kills_masked = self.mask(mask);
 
         *self = self.mask(!mask);
 
-        kills_masked.into_iter()
+        kills_masked
     }
 
-    pub fn toss(&mut self, location : Tile, piece : PieceType) -> (Option<PieceType>, PieceType){
+    pub fn is_not_empty(&self) -> bool{
+        self.flats.is_not_empty() | self.talls[0].is_not_empty() | self.talls[1].is_not_empty()
+    }
+
+    pub fn toss(&mut self, location : Tile, piece : PieceType){
         let mask = BitSet::tile_mask(&location);
 
         let flat = (self.flats & mask).is_not_empty();
 
-        let (original, final_piece) = match piece{
+        match piece{
             PieceType::Flat => {
                 assert!(!flat);
                 self.flats.set_mask_bool(true, mask);
                 
-                (None, piece)
             },
             PieceType::Lone(tall) => {
                 let (tall0, tall1) = Self::encode_tall(tall);
                 self.talls[0].set_mask_bool(tall0, mask);
                 self.talls[1].set_mask_bool(tall1, mask);
-                if flat {
-                    (Some(PieceType::Flat), PieceType::Stack(tall))
-                } else {
-                    (None, piece)
-                }
+                
             },
             PieceType::Stack(..) => unreachable!()
         
         };
-
-        
-
-        return (original,final_piece)
 
     }
 
@@ -1315,21 +1349,6 @@ impl PieceMap{
 
         Self::decode_species(flat, tall0, tall1)
 
-        // let tall = Self::decode_tall(tall0, tall1);
-
-        // if flat{
-        //     if let Some(tall) = tall{
-        //         Some(PieceType::Stack(tall))
-        //     } else {
-        //         Some(PieceType::Flat)
-        //     }
-        // } else {
-        //     if let Some(tall) = tall{
-        //         Some(PieceType::Lone(tall))
-        //     } else {
-        //         None
-        //     }
-        // }
     }
 
     pub fn clear_tile(&mut self, tile : Tile){
@@ -1340,14 +1359,6 @@ impl PieceMap{
         self.talls[1] &= mask;
     }
 
-    // pub fn set(&mut self, location : Tile, piece : PieceType){
-    //     let (flat, tall0, tall1) = Self::encode_species(piece);
-    //     let mask = BitSet::tile_mask(&location);
-
-    //     self.flats.set_mask_bool(flat, mask);
-    //     self.talls[0].set_mask_bool(tall0, mask);
-    //     self.talls[1].set_mask_bool(tall1, mask);
-    // }
 }
 
 
@@ -1355,7 +1366,6 @@ impl PieceMap{
 
 #[cfg(test)]
 mod tests{
-    use egui::text::TAB_SIZE;
 
     use super::*;
     #[test]
@@ -1374,19 +1384,6 @@ mod tests{
             })
         );
         
-        // (0..BOARD_SIZE).for_each(|code|
-        //     {
-        //         let code = code as u8;
-        //         let tile = Tile::from_code(code);
-        //         let compute_code = tile.code();
-
-        //         assert_eq!(code, compute_code);
-
-        //         let rebuild = Tile::from_code(compute_code);
-
-        //         assert_eq!(tile,rebuild);
-        //     }
-        // );
     }
 
     #[test]
@@ -1478,7 +1475,7 @@ mod tests{
 
             if let Some(tile_xyz) = tile_xyz{
                 let bit = BitSet::tile_to_bit(&tile_xyz);
-                if !BitSet::BITS.contains(&bit){
+                if !BOARD_BITS.contains(&bit){
                     panic!("tile {} ({}/{}) maps to bit {} which is invalid.", 
                     tile_xyz,
                     tile_xyz.ux(),
@@ -1488,7 +1485,7 @@ mod tests{
             }
         });
 
-        BitSet::BITS.iter().for_each(|b|{
+        BOARD_BITS.iter().for_each(|b|{
             let nasty = BitSet::bit_to_tile(*b);
 
             assert!(Tile::from_xyz(nasty.x(), nasty.y(), nasty.z()).is_some())

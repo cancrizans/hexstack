@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::assets::Assets;
-use crate::board::Piece;
+use crate::board::{Captured, Piece};
 use crate::editor::PositionEditor;
 use crate::theme::set_theme;
 use crate::ui::{Button, MqUi};
-use crate::{theme, EvalResult, HistoryEntry, PieceType, Player, Ply, State, Tile};
+use crate::{theme, EvalResult, HistoryEntry, Player, Ply, Position, Tile};
 use egui::{Color32, Id, Margin};
 use itertools::Itertools;
 use macroquad::audio::{play_sound, play_sound_once, PlaySoundParams};
@@ -70,23 +70,23 @@ pub struct MatchConfig{
 }
 
 
-struct FatGameState{
-    state : State,
+struct MatchState{
+    state : Position,
     valid_moves : Vec<Ply>,
     is_won : Option<Player>,
 
     history : Vec<HistoryEntry>,
 }
 
-impl FatGameState{
+impl MatchState{
     #[allow(dead_code)]
-    fn setup()->FatGameState{
-        Self::setup_from(State::setup())
+    fn setup()->MatchState{
+        Self::setup_from(Position::setup())
     }
 
-    fn setup_from(state : State) -> FatGameState{
+    fn setup_from(state : Position) -> MatchState{
         let valid_moves = state.valid_moves();
-        FatGameState{
+        MatchState{
             state,
             valid_moves,
             is_won : None,
@@ -106,23 +106,65 @@ impl FatGameState{
     fn apply_move(&mut self, ply : Ply){
         assert!(self.is_won.is_none());
 
-        let entry = self.state.compute_history_entry(ply);
+        let entry = self.state.compute_history_entry(ply, self.current_captured());
         self.history.push(entry);
 
         self.state.apply_move(ply);
         self.refresh();
     }
 
+
+    fn current_captured(&self) -> HashMap<Player,Captured>{
+        HashMap::from([
+            (Player::White, self.current_captured_color(Player::White)),
+            (Player::Black, self.current_captured_color(Player::Black)),
+        ])
+    }
+    fn current_captured_color(&self, color : Player) -> Captured{
+        if let Some(last_entry) = self.history.last(){
+            last_entry.captured_after.get(&color).unwrap().clone()
+        } else {
+            Captured::empty()
+        }
+    }
+
     fn to_play(&self) -> Player{
         self.state.to_play
     }
 
-    fn draw(&self, piece_tex : Texture2D, font : Font){
-        self.state.draw(piece_tex, font, false, false, false);
+    fn draw_position(&self, position : &Position, captures : &HashMap<Player,Captured>, assets : &Assets, arrows_alpha : f32){
+        if arrows_alpha > 0.001{
+            position.draw_attacks(false, arrows_alpha);
+        }
+        position.draw(assets.pieces, assets.font, false, false, false);
+        for (&color, caps) in captures{
+            caps.draw(color, assets);
+        }
+        
+    }
+
+    fn draw_present(&self, assets : &Assets, arrows_alpha : f32){
+        self.draw_position(&self.state, &self.current_captured(), assets, arrows_alpha);
+    }
+
+    fn draw_past(&self, index : usize, assets : &Assets, arrows_alpha : f32) -> Result<(),()>{
+        if let Some(entry) = self.history.get(index){
+            entry.ply.from_tile.draw_highlight_fill(Color::from_hex(0x95eeee), false);
+            entry.ply.to_tile.draw_highlight_fill(Color::from_hex(0xa0ffff), false);
+            for (tile,_) in &entry.kills{
+                tile.draw_highlight_fill(Color::from_hex(0xddbbbb), false);
+            }
+            
+            
+            self.draw_position(&entry.state_after, &entry.captured_after, assets, arrows_alpha);
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 
 
-    fn state_clone(&self) -> State{
+    fn state_clone(&self) -> Position{
         self.state.clone()
     }
 
@@ -147,7 +189,7 @@ enum Decision{
 }
 
 trait Gamer{
-    fn assign_puzzle(&mut self, state : State);
+    fn assign_puzzle(&mut self, state : Position);
     fn poll_answer(&mut self) -> Option<Decision>;
     fn process(&mut self, ui : &MqUi, as_player : Player);
 
@@ -186,7 +228,7 @@ impl Gamer for Bot{
     fn allows_takebacks(&self) -> bool {
         false
     }
-    fn assign_puzzle(&mut self, state : State) {
+    fn assign_puzzle(&mut self, state : Position) {
         let mut depth = self.depth;
 
         let mut rng = ::rand::thread_rng();
@@ -248,7 +290,7 @@ impl Gamer for Bot{
 
 struct Human{
     selected_tile : Option<Tile>,
-    puzzle_state : Option<State>,
+    puzzle_state : Option<Position>,
     available_moves : Option<HashSet<Ply>>,
     answer : Option<Decision>,
     piece_tex : Texture2D,
@@ -299,7 +341,7 @@ impl Gamer for Human{
         self.allow_takeback
     }
 
-    fn assign_puzzle(&mut self, state : State) {
+    fn assign_puzzle(&mut self, state : Position) {
         self.reset();
         self.available_moves = Some(HashSet::from_iter(state.valid_moves().into_iter()));
         self.puzzle_state = Some(state);
@@ -374,12 +416,12 @@ struct MoveAnimState{
     time : f32,
     ply : Ply,
     moved_piece : Piece,
-    drawing_state : State,
+    drawing_state : Position,
     kills : Vec<(Tile,Piece)>
 }
 
 impl MoveAnimState{
-    fn new(ply : Ply, game_state : State) -> Self{
+    fn new(ply : Ply, game_state : Position) -> Self{
         let mut drawing_state = game_state;
 
         let mut kill_copy_state = drawing_state.clone();
@@ -387,6 +429,7 @@ impl MoveAnimState{
 
         let defending = kill_copy_state.to_play.flip();
         let kills : Vec<(Tile, Piece)> = kill_copy_state.stage_attack_scan(drawing_state.to_play)
+            .into_iter()
             .map(|(t,sp)|(t,Piece{color:defending,species:sp})).collect();
 
         let moved_piece = Piece{color : drawing_state.to_play(), species: drawing_state.pull_moving_piece(drawing_state.to_play(),ply.from_tile)};
@@ -427,7 +470,7 @@ enum DisplayMode{
 struct GameApp<'a>{
     assets : &'a Assets,
     
-    game_state : FatGameState,
+    game_state : MatchState,
     
     piece_tex : Texture2D,
     
@@ -501,12 +544,12 @@ impl<'a> GameApp<'a>{
 
         let starting_position = match_config.starting_position
             .map(|ed|ed.get_state_clone())
-            .unwrap_or(State::setup());
+            .unwrap_or(Position::setup());
  
         let app_state = GameApp{
             assets,
             
-            game_state : FatGameState::setup_from(starting_position),
+            game_state : MatchState::setup_from(starting_position),
 
             display_mode : DisplayMode::Present,
 
@@ -856,12 +899,18 @@ impl<'a> GameApp<'a>{
 
         match self.display_mode{
             DisplayMode::Present =>{
-                if self.attack_patterns_alpha > 0.001{
-                    self.game_state.state.draw_attacks(false, self.attack_patterns_alpha);
-                };
+                // if self.attack_patterns_alpha > 0.001{
+                //     self.game_state.state.draw_attacks(false, self.attack_patterns_alpha);
+                // };
                 match &self.app_state{
                     GameStateMachine::Animating(anim_state) => {
-                        anim_state.drawing_state.draw(self.piece_tex, self.assets.font, false,false,false);
+
+                        self.game_state.draw_position(
+                            &anim_state.drawing_state, 
+                            &self.game_state.current_captured()
+                            , self.assets, self.attack_patterns_alpha);
+                        
+                        
                         anim_state.ply.draw(false);
 
                         let start:Vec2 = anim_state.ply.from_tile.to_world(false).into();
@@ -887,23 +936,14 @@ impl<'a> GameApp<'a>{
                     _ => {
 
                         
-                        self.game_state.draw(self.piece_tex, self.assets.font);
+                        self.game_state.draw_present(&self.assets, self.attack_patterns_alpha);
                         
                     }
                     };
                 },
             DisplayMode::History { index } => {
-                if let Some(entry) = self.game_state.history.get(index){
-                    entry.ply.from_tile.draw_highlight_fill(Color::from_hex(0x95eeee), false);
-                    entry.ply.to_tile.draw_highlight_fill(Color::from_hex(0xa0ffff), false);
-                    for (tile,_) in &entry.kills{
-                        tile.draw_highlight_fill(Color::from_hex(0xddbbbb), false);
-                    }
-                    if self.attack_patterns_alpha > 0.001{
-                        entry.state_after.draw_attacks(false, self.attack_patterns_alpha);
-                    }
-                    entry.state_after.draw(self.piece_tex, self.assets.font, false,false,false);
-                }
+                self.game_state.draw_past(index, self.assets, self.attack_patterns_alpha)
+                .unwrap_or_else(|()| self.game_state.draw_present(self.assets,self.attack_patterns_alpha))
             }
         };
 
