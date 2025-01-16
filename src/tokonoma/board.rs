@@ -3,7 +3,7 @@ use itertools::Itertools;
 use macroquad::prelude::*;
 use std::{fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
 use memoize::memoize;
-use crate::{arrows::draw_arrow, assets::Assets};
+use crate::{arrows::draw_arrow, assets::{Assets, get_assets_unchecked, ASSETS}};
 
 
 
@@ -303,7 +303,7 @@ impl Tile{
         Tile::from_xyz(tx, ty, -tx-ty)
     }
 
-    pub fn mod3(&self) -> u8{
+    pub const fn mod3(&self) -> u8{
         (self.x()-self.y()).rem_euclid(3) as u8
     }
 
@@ -357,12 +357,6 @@ impl Tile{
 
     pub fn draw_board(flip_board : bool){
 
-        // self.edges.iter().for_each(|(et,t,n)|{
-        //     let (x1,y1) = t.to_world();
-        //     let (x2,y2) = n.to_world();
-        //     let (xm,ym) = (0.5*(x1+x2),0.5*(y1+y2));
-        //     draw_line(x1, y1, xm, ym, 0.1, et.to_color());
-        // });
         Self::all_tiles().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
 
@@ -374,14 +368,29 @@ impl Tile{
                 true,
                 Color::from_hex(0x111111),
                 tile_color);
-
-            
         });
 
-        
+        for player in [Player::Black,Player::White]{
+            let (x,y) = Tile::corner(player).to_world(flip_board);
+
+            const DARK_TILE : Tile = Tile::from_xyz_unchecked(0, -1, 1);
+            const LIGHT_TILE : Tile = Tile::from_xyz_unchecked(0, 1, -1);
+            let col = match player{
+                Player::Black => DARK_TILE.tile_color(),
+                Player::White => LIGHT_TILE.tile_color(),
+            };
+
+            draw_hexagon(x, y, 
+                0.6, 
+                0.0,
+                true,
+                Color::from_hex(0x111111),
+                col);
+        }
     }
 
-    pub fn draw_tile_numbers(font : Font, flip_board : bool){
+    pub fn draw_tile_numbers( flip_board : bool){
+        let font = ASSETS.get().unwrap().font;
         Self::all_tiles().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
             let (x,y) = (x,y+0.4);
@@ -676,6 +685,16 @@ impl PieceType{
             PieceType::Stack(tall) => PieceType::Lone(*tall)
         }
     }
+
+    pub const ALL : [PieceType;7] = [
+        PieceType::Flat, 
+        PieceType::Lone(Tall::Hand),
+        PieceType::Lone(Tall::Blind),
+        PieceType::Lone(Tall::Star),
+        PieceType::Stack(Tall::Hand),
+        PieceType::Stack(Tall::Blind),
+        PieceType::Stack(Tall::Star),
+    ];
 }
 
 #[derive(Clone, Copy,PartialEq, Eq,Hash, Debug)]
@@ -686,7 +705,7 @@ pub struct Piece{
 
 
 impl Piece{
-    pub fn draw(&self, x : f32, y: f32, piece_tex : Texture2D, scale: f32){
+    pub fn draw(&self, x : f32, y: f32,  scale: f32){
         
         // let col = self.color.to_color();
         // let outcol = self.color.flip().to_color();
@@ -715,6 +734,7 @@ impl Piece{
 
         let sx = sx as f32;
         let sy = sy as f32;
+        let piece_tex = get_assets_unchecked().pieces;
         draw_texture_ex(piece_tex, 
             x - world_size * 0.5, y - world_size * 0.5,
                 WHITE, DrawTextureParams{
@@ -818,19 +838,17 @@ impl Captured{
         iterator.into_iter().for_each(|pt| self.push(pt))
     }
 
-    pub fn draw(&self, color : Player, assets :  &Assets){
+    pub fn draw(&self, color : Player){
         let capts = self;
         let n_capt = 0.5*(capts.count().saturating_sub(1) as f32);
         let basey = match color {Player::White => 4.7, Player::Black => -4.7};
+        
         capts.iter().enumerate().for_each(|(i,piece_type)|{
             let p = Piece{color : color.flip(), species : piece_type};
             let x = 0.6*(i as f32 - n_capt);
             let y = basey;
-            p.draw(x,y, assets.pieces, 0.5);
-            // (0..count).for_each(|it|{
-            //     // let y = basey + 0.6*(it as f32);
-                
-            // });
+            p.draw(x,y, 0.5);
+            
             
         });
     }
@@ -845,7 +863,7 @@ impl BitSet{
     }
 
     #[inline]
-    const fn count(&self) -> u32{
+    pub const fn count(&self) -> u32{
         self.0.count_ones()
     }
 
@@ -859,7 +877,7 @@ impl BitSet{
     }
 
     #[inline]
-    const fn tile_mask(tile : &Tile) -> BitSet{
+    pub const fn tile_mask(tile : &Tile) -> BitSet{
         BitSet(1<<Self::tile_to_bit(tile))
     }
 
@@ -868,6 +886,7 @@ impl BitSet{
         BitSet(self.0 & other.0)
     }
 
+    #[inline]
     pub const fn union(self, other : BitSet) -> BitSet{
         BitSet(self.0 | other.0)
     }
@@ -1131,6 +1150,7 @@ impl PieceMap{
         (self.occupied() & mask).is_not_empty()
     }
 
+    #[inline]
     pub fn locate_talls(&self, tall : Tall) -> BitSet{
         let (tall0,tall1) = Self::encode_tall(tall);
 
@@ -1141,6 +1161,23 @@ impl PieceMap{
 
             (false,false) => unreachable!()
         }
+    }
+
+
+    pub fn locate_species(&self, species : PieceType) -> BitSet{
+        // Note: this is maybe inefficient because
+        // it is called twice for lones and stacks.
+
+        match species{
+            PieceType::Flat => self.locate_lone_flats(),
+            PieceType::Lone(tall) => {
+                self.locate_talls(tall) & !self.flats
+            },
+            PieceType::Stack(tall) => {
+                self.locate_talls(tall) & self.flats
+            }
+        }
+
     }
     
 
@@ -1172,7 +1209,7 @@ impl PieceMap{
         }
     }
 
-    fn mask(&self, mask : BitSet) -> Self{
+    pub fn mask(&self, mask : BitSet) -> Self{
         PieceMap {
             flats : self.flats & mask,
             talls : [

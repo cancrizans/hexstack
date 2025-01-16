@@ -17,7 +17,7 @@ impl PositionEditor{
         }
     }
 
-    fn process_palette_button(&mut self, position : Vec2, brush : Option<Piece>, camera : &Camera2D, assets : &Assets){
+    fn process_palette_button(&mut self, position : Vec2, brush : Option<Piece>, camera : &Camera2D){
         let mouse =  mouse_position();
         let mouse_world = camera.screen_to_world(mouse.into());
 
@@ -41,7 +41,7 @@ impl PositionEditor{
         };
 
         if let Some(piece) = brush{
-            piece.draw(position.x, position.y,assets.pieces,  0.9)
+            piece.draw(position.x, position.y,  0.9)
         } else {
             draw_line(position.x-0.3, position.y-0.3,position.x+0.3,position.y+0.3, 0.1, RED);
             draw_circle_lines(position.x, position.y, 0.3, 0.1, RED);
@@ -60,8 +60,7 @@ impl PositionEditor{
         Tile::draw_board(false);
 
         self.state.draw(
-            assets.pieces,
-            assets.font, 
+            
             false, false, false);
 
         let mouse = mouse_position();
@@ -86,7 +85,7 @@ impl PositionEditor{
             let y = -8.0 + ((i/5) as f32 ) * 1.2;
             let x = -2.0 + ((i%5) as f32) * 1.1;
 
-            self.process_palette_button(vec2(x,y), brush, camera, assets);
+            self.process_palette_button(vec2(x,y), brush, camera);
         });
         
         

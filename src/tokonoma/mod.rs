@@ -197,8 +197,6 @@ impl Position{
     }
 
     pub fn draw(&self, 
-            piece_tex : Texture2D, 
-            font : Font,
             flip_board : bool,
             draw_attacks : bool,
             draw_tile_numbers : bool,
@@ -213,7 +211,7 @@ impl Position{
             self.get_pieces(color).clone().into_iter().for_each(|(t,species)|{ 
                 let (x,y) = t.to_world(flip_board);
                 let piece = Piece{color, species};
-                piece.draw(x,y, piece_tex , 1.0);
+                piece.draw(x,y,  1.0);
             });
         }
 
@@ -225,7 +223,7 @@ impl Position{
         
 
         if draw_tile_numbers {
-            Tile::draw_tile_numbers(font, flip_board);
+            Tile::draw_tile_numbers( flip_board);
         }
 
         // draw_text_ex(
@@ -538,6 +536,40 @@ impl Position{
         let opponent_pieces = self.get_pieces(player.flip());
         let active_pieces = self.get_pieces(player);
 
+        let mut target_diffusion = BitSet::tile_mask(&opponent_house);
+
+        // we only count opponent pieces as obstacles, except for a piece
+        // on the house tile, to prevent getting blinded by "goalkeeping".
+        let walkable = (!opponent_pieces.occupied())&target_diffusion ;
+
+
+        let mut flats_diffusion = active_pieces.locate_lone_flats();
+
+        for current_distance in 0..=4{
+            if target_diffusion.intersection(flats_diffusion).is_not_empty(){
+                return current_distance;
+            }
+
+            if current_distance % 2 == 0{
+                flats_diffusion = flats_diffusion.generate_move_destinations(player, PieceType::Flat);
+                flats_diffusion &= walkable;
+            } else {
+                target_diffusion = target_diffusion.generate_move_destinations(player.flip(), PieceType::Flat);   
+                target_diffusion &= walkable;
+            }
+        };
+
+        8
+    }
+    
+    #[inline]
+        fn _deprecated_passed_flat_distance(&self, player : Player) -> u8{
+        //Not good.
+        //Should be rewritten as diffusion process on bitboard
+        let opponent_house = Tile::corner(player.flip());
+        let opponent_pieces = self.get_pieces(player.flip());
+        let active_pieces = self.get_pieces(player);
+
         let mut active = HashSet::new();
         active.insert(opponent_house);
 
@@ -584,15 +616,26 @@ impl Position{
         }
     }
 
+    /// number of available moves
+    fn mobility(&self, color : Player) -> u32{
+        self.get_pieces(color).clone().into_iter()
+        .map(|(t,pt)|
+            BitSet::move_destinations_from_tile(t, color, pt)
+            .count()
+        ).sum()
+    }
+
     pub fn eval_heuristic(&self) -> Score{
         if let Some(winner)  = self.is_won_home(){
             return Score::win_now(winner);
         }
         
-        let white_moves = self.valid_moves_for(Player::White);
-        let white_moves_count = white_moves.len();
-        let black_moves = self.valid_moves_for(Player::Black);
-        let black_moves_count = black_moves.len();
+        // let white_moves = self.valid_moves_for(Player::White);
+        // let white_moves_count = white_moves.len();
+        let white_moves_count = self.mobility(Player::White);
+        // let black_moves = self.valid_moves_for(Player::Black);
+        // let black_moves_count = black_moves.len();
+        let black_moves_count = self.mobility(Player::Black);
 
         let mobility_score = 0.1 * (
             white_moves_count as f32
@@ -605,46 +648,75 @@ impl Position{
         let finite_score = [Player::White,Player::Black].into_iter()
         .map(|color|{
 
-            let mut single_attacked = HashSet::new();
-            let mut double_attacked = HashSet::new();
+            // let mut single_attacked = HashSet::new();
+            // let mut double_attacked = HashSet::new();
 
-            let attacker_moves = match color{
-                Player::Black => &white_moves,
-                Player::White => &black_moves
-            };
-            attacker_moves.iter().for_each(|ply|{
-                let dest = ply.to_tile;
-                if single_attacked.remove(&dest){
-                    double_attacked.insert(dest);
-                } else {
-                    single_attacked.insert(dest);
-                }
-            });
+            // let attacker_moves = match color{
+            //     Player::Black => &white_moves,
+            //     Player::White => &black_moves
+            // };
+            // attacker_moves.iter().for_each(|ply|{
+            //     let dest = ply.to_tile;
+            //     if single_attacked.remove(&dest){
+            //         double_attacked.insert(dest);
+            //     } else {
+            //         single_attacked.insert(dest);
+            //     }
+            // });
+            let double_attacked = self.double_attack_map(color.flip());
 
             let multiplier = match color{
                 Player::Black => -1f32,
                 Player::White => 1f32
             };
-            self.get_pieces(color).clone().into_iter().map(|(t,species)|{
-                if double_attacked.contains(&t){
-                    return 0.0
-                }
 
-                let signed_piece_value = multiplier * species.value();
+            let masked_pieces = self.get_pieces(color).mask(!double_attacked);
+
+            PieceType::ALL.into_iter().map(|species|{
+                let instances = masked_pieces.locate_species(species);
+
+                let signed_piece_value = multiplier * species.value() * (instances.count() as f32);
+
+                signed_piece_value 
+                // + instances.into_iter().map(|t|{
+                //     // let signed_piece_value = multiplier * species.value();
+        
+                //     let horizontal_pos = t.x()+2*t.y();
+                //     assert!((-6..=6).contains(&horizontal_pos));
+        
+                //     let prox_x = (horizontal_pos as f32 * multiplier + 6.0) / 12.0;
+        
+                //     let prox_score = prox_x.powf(2.0);
+        
+                //     let location_score = 0.1 * prox_score * multiplier * species.positional_weight();
+        
+        
+                //     location_score
+                // }).sum::<f32>()
+
+            }).sum::<f32>() as f32
+
+            // self.get_pieces(color).clone().into_iter().map(|(t,species)|{
+                
+            //     if double_attacked.get(&t){
+            //         return 0.0
+            //     }
+
+            //     let signed_piece_value = multiplier * species.value();
     
-                let horizontal_pos = t.x()+2*t.y();
-                assert!((-6..=6).contains(&horizontal_pos));
+            //     let horizontal_pos = t.x()+2*t.y();
+            //     assert!((-6..=6).contains(&horizontal_pos));
     
-                let prox_x = (horizontal_pos as f32 * multiplier + 6.0) / 12.0;
+            //     let prox_x = (horizontal_pos as f32 * multiplier + 6.0) / 12.0;
     
-                let prox_score = prox_x.powf(2.0);
+            //     let prox_score = prox_x.powf(2.0);
     
-                let location_score = 0.1 * prox_score * multiplier * species.positional_weight();
+            //     let location_score = 0.1 * prox_score * multiplier * species.positional_weight();
     
     
-                signed_piece_value + location_score
-            }
-            ).sum::<f32>() as f32
+            //     signed_piece_value + location_score
+            // }
+            // ).sum::<f32>() as f32
         }).sum::<f32>() as f32;
         
         

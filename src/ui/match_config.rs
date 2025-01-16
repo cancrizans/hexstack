@@ -4,13 +4,13 @@ use super::editor::PositionEditor;
 
 
 
-use crate::{gameplay::{GamerSpec, MatchConfig}, theme::{self, set_theme}, Player, Tile};
+use crate::{assets::ASSETS, gameplay::{GamerSpec, MatchConfig}, theme::{self, set_theme}, Player, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
 
 use crate::assets::Assets;
 use macroquad::prelude::*;
 
-pub async fn match_config_ui(assets : &Assets, last_match_config : Option<MatchConfig>) -> MatchConfig{
+pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchConfig{
     let choices = [
         GamerSpec::Human,
         GamerSpec::Gibberish,
@@ -196,6 +196,8 @@ pub async fn match_config_ui(assets : &Assets, last_match_config : Option<MatchC
         };
         set_camera(match_ui_cam);
 
+        let assets = ASSETS.get().unwrap();
+
         for pid in [0,1]{
             let x = 0.55 + (pid as f32)*0.6;
             let y = -0.55;
@@ -208,6 +210,7 @@ pub async fn match_config_ui(assets : &Assets, last_match_config : Option<MatchC
 
             let av_offset = if match_config.gamers[pid] == GamerSpec::Human {0} else {1};
 
+            
             let (avatar_tex,src) = assets.get_avatar(
                 base_color, 
                 av_offset);

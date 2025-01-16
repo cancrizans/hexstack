@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::assets::Assets;
+use crate::assets::{get_assets_unchecked, Assets, ASSETS};
 use crate::tokonoma::{board::Piece, EvalResult, Position};
 
 use crate::tokonoma::MatchState;
@@ -52,7 +52,7 @@ impl GamerSpec{
 
     fn make(self, assets : &Assets, allow_takeback : bool) -> Box<dyn Gamer>{
         match self{
-            GamerSpec::Human => Human::new_boxed(assets, allow_takeback),
+            GamerSpec::Human => Human::new_boxed( allow_takeback),
             GamerSpec::Gibberish => Bot::new_boxed(0,0.0),
             GamerSpec::Noob => Bot::new_boxed(1, 0.2),
             GamerSpec::Decent => Bot::new_boxed(2, 0.2),
@@ -163,7 +163,6 @@ struct Human{
     puzzle_state : Option<Position>,
     available_moves : Option<HashSet<Ply>>,
     answer : Option<Decision>,
-    piece_tex : Texture2D,
 
     allow_takeback : bool,
 
@@ -173,14 +172,14 @@ struct Human{
 }
 
 impl Human{
-    fn new(assets : & Assets, allow_takeback : bool)->Self{
+    fn new(allow_takeback : bool)->Self{
         Human { 
             selected_tile: None, 
             puzzle_state: None,
             available_moves : None,
             answer : None,
-            piece_tex : assets.pieces,
-            btn_takeback : make_takeback_button(assets),
+            
+            btn_takeback : make_takeback_button(ASSETS.get().unwrap()),
 
             allow_takeback,
 
@@ -188,8 +187,8 @@ impl Human{
          }
     }
 
-    fn new_boxed(assets : &Assets, allow_takeback : bool)->Box<Self>{
-        Box::new(Self::new(assets , allow_takeback))
+    fn new_boxed( allow_takeback : bool)->Box<Self>{
+        Box::new(Self::new( allow_takeback))
     }
 
     fn reset(&mut self){
@@ -229,6 +228,7 @@ impl Gamer for Human{
     }
 
     fn process(&mut self, ui : &MqUi, as_player : Player) {
+        let assets = get_assets_unchecked();
 
         if let Some(av_moves) = &self.available_moves{
             if self.allow_takeback{
@@ -237,9 +237,10 @@ impl Gamer for Human{
                 }
             }
 
+            let piece_tex = assets.pieces;
             if let Some(selected) = self.selected_tile{
                 av_moves.iter().filter(|p|p.from_tile == selected)
-                    .for_each(|p|p.to_tile.draw_move_target(as_player,self.piece_tex, false));
+                    .for_each(|p|p.to_tile.draw_move_target(as_player,piece_tex, false));
             }
 
             if let Some(mouse_hover) = Self::mouse_tile(ui.camera){
@@ -337,12 +338,11 @@ enum DisplayMode{
     History{index : usize}
 }
 
-struct GameApp<'a>{
-    assets : &'a Assets,
+struct GameApp{
+
     
     match_state : MatchState,
     
-    piece_tex : Texture2D,
     
 
 
@@ -381,12 +381,13 @@ fn make_takeback_button(assets : &Assets) -> Button{
     )
 }
 
-impl<'a> GameApp<'a>{
+impl GameApp{
     async fn new(
-            assets : &'a Assets,
             match_config : MatchConfig
-        )->GameApp<'a>{
+        )->GameApp{
+
         
+
 
         let mut gamers :HashMap<Player, Box<dyn Gamer>> = HashMap::new();
         
@@ -400,7 +401,7 @@ impl<'a> GameApp<'a>{
             }
         };
         
-        let piece_tex = assets.pieces;
+        let assets = ASSETS.get().unwrap();
         
         let [gm0,gm1] = match_config.gamers.map(
             |s|s.make(assets, match_config.allow_takeback));
@@ -419,16 +420,10 @@ impl<'a> GameApp<'a>{
             .unwrap_or(Position::setup());
  
         let app_state = GameApp{
-            assets,
             
             match_state : MatchState::setup_from(starting_position),
 
             display_mode : DisplayMode::Present,
-
-            piece_tex,
-            
-
-
             gamers ,
             
             last_touched_tiles : None,
@@ -487,8 +482,7 @@ impl<'a> GameApp<'a>{
 
         self.last_kill_tiles = vec![];
 
-        
-        self.assets.piece_slide.play();
+        ASSETS.get().unwrap().piece_slide.play();
         self.app_state = GameStateMachine::Animating(MoveAnimState::new(ply,self.match_state.state_clone()));
 
         self.match_state.apply_move(ply);
@@ -549,7 +543,7 @@ impl<'a> GameApp<'a>{
         set_camera(&cam);
 
         // Own ui setup
-        let mqui = MqUi::new(self.assets, &cam);
+        let mqui = MqUi::new( &cam);
 
         // History panel
         egui_macroquad::ui(|egui_ctx| {
@@ -672,7 +666,7 @@ impl<'a> GameApp<'a>{
                 } else {
                     self.match_state.refresh();
                     if let Some(winner) = self.match_state.is_won(){
-                        play_sound_once(self.assets.mate);
+                        play_sound_once(ASSETS.get().unwrap().mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
                         self.ask();
@@ -714,11 +708,11 @@ impl<'a> GameApp<'a>{
                     self.last_kill_tiles = anim_state.kills.iter().map(|(t,_)|*t).collect();
 
                     if let Some(winner) = self.match_state.is_won(){
-                        play_sound_once(self.assets.mate);
+                        play_sound_once(ASSETS.get().unwrap().mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
                         if anim_state.kills.len()>0{
-                            play_sound(self.assets.capture,PlaySoundParams{
+                            play_sound(ASSETS.get().unwrap().capture,PlaySoundParams{
                                 looped : false, volume : 0.5
                             });
                         }
@@ -787,7 +781,7 @@ impl<'a> GameApp<'a>{
                         self.match_state.draw_position(
                             &anim_state.drawing_state, 
                             &self.match_state.current_captured()
-                            , self.assets, self.attack_patterns_alpha);
+                            , self.attack_patterns_alpha);
                         
                         
                         anim_state.ply.draw(false);
@@ -800,7 +794,7 @@ impl<'a> GameApp<'a>{
                         let pos_ground = start.lerp(end,lambda );
 
                         let pos = pos_ground + (4.0*lambda*(1.0-lambda))*vec2(0.0,-0.3);
-                        anim_state.moved_piece.draw(pos.x, pos.y, self.piece_tex, 1.0);
+                        anim_state.moved_piece.draw(pos.x, pos.y,  1.0);
 
 
                         let kill_scale = (1.0-t).powf(2.0) * 1.3;
@@ -808,21 +802,21 @@ impl<'a> GameApp<'a>{
                         anim_state.kills.iter().for_each(|(t,p)|
                             {   
                                 let (x,y) = t.to_world(false);
-                                p.draw(x, y, self.piece_tex, kill_scale);
+                                p.draw(x, y,  kill_scale);
                             }
                         );
                     },
                     _ => {
 
                         
-                        self.match_state.draw_present(&self.assets, self.attack_patterns_alpha);
+                        self.match_state.draw_present( self.attack_patterns_alpha);
                         
                     }
                     };
                 },
             DisplayMode::History { index } => {
-                self.match_state.draw_past(index, self.assets, self.attack_patterns_alpha)
-                .unwrap_or_else(|()| self.match_state.draw_present(self.assets,self.attack_patterns_alpha))
+                self.match_state.draw_past(index,  self.attack_patterns_alpha)
+                .unwrap_or_else(|()| self.match_state.draw_present(self.attack_patterns_alpha))
             }
         };
 
@@ -830,7 +824,7 @@ impl<'a> GameApp<'a>{
         // Draw overlays
 
         if self.tile_letters_toggle{
-            Tile::draw_tile_numbers(self.assets.font, false);
+            Tile::draw_tile_numbers( false);
         }
 
         for player in [
@@ -857,7 +851,7 @@ impl<'a> GameApp<'a>{
             let size = vec2(2.0,2.0).lerp(vec2(3.0,3.0), strength);
             let pos = player.ui_info_pos() - size*0.5;
 
-            let (avatar_tex,avatar_src) = self.assets.get_avatar(player, gamer.avatar_offset());
+            let (avatar_tex,avatar_src) = ASSETS.get().unwrap().get_avatar(player, gamer.avatar_offset());
 
             draw_texture_ex(
                 avatar_tex, 
@@ -886,7 +880,7 @@ impl<'a> GameApp<'a>{
         };
 
         if self.btn_rulesheet.process(&mqui){
-            read_rulesheet(&self.assets).await
+            read_rulesheet().await
         }
 
         
@@ -928,9 +922,23 @@ pub fn window_conf()->Conf{
 }
 
 
-pub async fn main(assets : &Assets,match_config : MatchConfig) {
+pub async fn main(match_config : MatchConfig) {
+    // await for loading of necessary assets
+    // let assets = get_assets_unchecked();
+    // loop {
+    //     clear_background(theme::BG_COLOR);
+    //     let assets_to_wait = [
+    //         &assets.pieces
+    //     ];
+
+    //     if assets_to_wait.into_iter().all(|a|a.get().is_some())
+    //     {
+    //         break;
+    //     }
+    //     next_frame().await
+    // }   
+
     let mut state = GameApp::new(
-        assets,
         match_config
     ).await;
 

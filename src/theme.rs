@@ -1,7 +1,7 @@
 use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, FontId, TextStyle, Ui};
 use macroquad::prelude::*;
 
-use crate::assets::Assets;
+use crate::assets::{Assets, ASSETS};
 
 pub const BG_COLOR : Color = color_u8!(0xee,0xee,0xee,0xff);
 
@@ -14,9 +14,10 @@ pub fn color_to_color32(color : Color)->Color32{
     Color32::from_rgb(r, g, b)
 }
 
-pub fn set_fonts(egui_ctx : &Context,assets : &Assets){
+pub fn set_fonts(egui_ctx : &Context){
     let mut fonts = FontDefinitions::default();
 
+    let assets = ASSETS.get().unwrap();
     // Install my own font (maybe supporting non-latin characters):
     fonts.font_data.insert("my_font".to_owned(),
         FontData::from_owned(assets.font_bytes.clone()));

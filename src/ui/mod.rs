@@ -4,17 +4,16 @@ pub mod match_config;
 
 use macroquad::prelude::*;
 
-use crate::assets::Assets;
+use crate::assets::{Assets, ASSETS};
 
 
 pub struct MqUi<'a>{
-    pub assets : &'a Assets,
     pub camera : &'a Camera2D
 }
 
 impl<'a> MqUi<'a>{
-    pub fn new(assets : &'a Assets, camera : &'a Camera2D)->Self{
-        MqUi { assets, camera }
+    pub fn new( camera : &'a Camera2D)->Self{
+        MqUi { camera }
     }
 }
 
@@ -57,13 +56,15 @@ impl Button{
                 ..Default::default()
             });
 
+        let font = ASSETS.get().unwrap().font;
+
         if self.alpha > 0.001{
             let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.55);
             draw_text_ex(
                 &self.text,
                 self.rect.x + self.rect.w,
                 self.rect.y + self.rect.h * 0.5 + 0.25,
-                TextParams{font:ui.assets.font,font_scale,font_scale_aspect,font_size,
+                TextParams{font,font_scale,font_scale_aspect,font_size,
                     color : Color::from_rgba(0x11, 0x11, 0x11, (255.0 * self.alpha) as u8),
                     ..Default::default()
                 }

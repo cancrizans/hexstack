@@ -1,4 +1,4 @@
-use crate::{assets::Assets, theme::{self, set_theme}};
+use crate::{assets::{Assets, ASSETS}, theme::{self, set_theme}};
 use egui::Margin;
 use macroquad::prelude::*;
 
@@ -79,7 +79,7 @@ const PAGES : &[Page] = &[
     },
 ];
 
-pub async fn read_rulesheet(assets:&Assets){
+pub async fn read_rulesheet(){
     let mut page_num = 0;
 
     loop{
@@ -148,6 +148,7 @@ pub async fn read_rulesheet(assets:&Assets){
         });
 
         let n_diags = page.diags.len();
+        let assets = ASSETS.get().unwrap();
         for (i,diag_name) in page.diags.iter().enumerate(){
             let diag = *assets.diagrams.get(diag_name).unwrap();
 

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use macroquad::color::Color;
 
-use crate::assets::Assets;
 
 use super::{Captured, HistoryEntry, PieceMap, Player, Ply, Position};
 
@@ -68,22 +67,23 @@ impl MatchState{
         self.state.to_play()
     }
 
-    pub fn draw_position(&self, position : &Position, captures : &HashMap<Player,Captured>, assets : &Assets, arrows_alpha : f32){
+    pub fn draw_position(&self, position : &Position, captures : &HashMap<Player,Captured>, arrows_alpha : f32){
         if arrows_alpha > 0.001{
             position.draw_attacks(false, arrows_alpha);
         }
-        position.draw(assets.pieces, assets.font, false, false, false);
+        
+        position.draw( false, false, false);
         for (&color, caps) in captures{
-            caps.draw(color, assets);
+            caps.draw(color);
         }
         
     }
 
-    pub fn draw_present(&self, assets : &Assets, arrows_alpha : f32){
-        self.draw_position(&self.state, &self.current_captured(), assets, arrows_alpha);
+    pub fn draw_present(&self, arrows_alpha : f32){
+        self.draw_position(&self.state, &self.current_captured(),  arrows_alpha);
     }
 
-    pub fn draw_past(&self, index : usize, assets : &Assets, arrows_alpha : f32) -> Result<(),()>{
+    pub fn draw_past(&self, index : usize,  arrows_alpha : f32) -> Result<(),()>{
         if let Some(entry) = self.history.get(index){
             entry.ply.from_tile.draw_highlight_fill(Color::from_hex(0x95eeee), false);
             entry.ply.to_tile.draw_highlight_fill(Color::from_hex(0xa0ffff), false);
@@ -92,7 +92,7 @@ impl MatchState{
             }
             
             
-            self.draw_position(&entry.state_after, &entry.captured_after, assets, arrows_alpha);
+            self.draw_position(&entry.state_after, &entry.captured_after,  arrows_alpha);
             Ok(())
         } else {
             Err(())

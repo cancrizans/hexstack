@@ -1,9 +1,15 @@
-use std::collections::HashMap;
+use std::future::Future;
+use std::fmt::Debug;
+use std::{collections::HashMap, sync::OnceLock};
 
-use coroutines::start_coroutine;
+
+use macroquad::experimental::coroutines::{Coroutine,start_coroutine};
+
 
 use macroquad::{audio::{load_sound, play_sound, PlaySoundParams, Sound}, prelude::*};
 use ::rand::seq::SliceRandom;
+
+use lazy_static::lazy_static;
 
 pub struct RandomClip{
     clips : Vec<(String,Sound)>
@@ -150,10 +156,11 @@ impl Assets{
             );
         }
     
+        let pieces = load_texture("gfx/pieces_sm.png").await?;
 
 
         Ok(Assets{
-            pieces : load_texture("gfx/pieces_sm.png").await?,
+            pieces ,
             btn_takeback : load_texture("gfx/btn_takeback.png").await?,
             btn_exit : load_texture("gfx/btn_exit.png").await?,
             btn_lines : load_texture("gfx/btn_lines.png").await?,
@@ -190,4 +197,51 @@ impl Assets{
 
     
     
+}
+
+
+lazy_static! {
+    pub static ref ASSETS : OnceLock<Assets> = OnceLock::new();
+}
+
+
+pub fn get_assets_unchecked()->&'static Assets{
+    ASSETS.get().expect("Assets not loaded.")
+}
+
+pub trait Content : Clone + Copy{
+    fn load_unchecked(path : &str) -> impl Future<Output = Self> + Send;
+}
+impl Content for Texture2D{
+    fn load_unchecked(path : &str) -> impl Future<Output = Self> + Send {
+        async {
+            load_texture(path).await.unwrap()
+        }
+    }
+}
+
+pub struct Asset<T> where T:Content + 'static + Debug{
+    resource : Coroutine<T>,
+    path : &'static str
+}
+
+impl<T> Asset<T> where T:Content + Debug{
+    fn load(path : &'static str) -> Asset<T>{
+        Asset{
+            resource : start_coroutine(T::load_unchecked(path)),
+            path
+        }
+    }
+
+    pub fn get(&self) -> Option<T>{
+        self.resource.retrieve()
+    }
+
+    pub fn get_unchecked(&self) -> T{
+        if let Some(value) = self.get(){
+            value
+        } else {
+            panic!("unchecked access to not loaded asset {}",self.path)
+        }
+    }
 }
