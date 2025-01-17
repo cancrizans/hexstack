@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::fmt::Debug;
+use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, sync::OnceLock};
 
 
@@ -38,12 +39,48 @@ impl RandomClip{
 
 const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 
+pub enum PieceSet{
+    Standard,
+    Minimal
+}
 
+#[derive(Clone)]
+pub struct PieceSetAsset{
+    pub tex : Texture2D,
+    pub base_scale : f32
+}
+
+// for reasons unknown to me, impl Drop
+// with tex.delete() creates a black texture? Strange.
+// We should manual delete.
+// Might be related to mquad bugs, hence .delete() was
+// removed in later versions (which we can't use).
+
+// impl Drop for PieceSetAsset{
+//     fn drop(&mut self) {
+//         self.tex.delete();
+//     }
+// }
+
+impl PieceSetAsset{
+    async fn load(spec : PieceSet) -> Result<PieceSetAsset,FileError>{
+        let set = match spec{
+            PieceSet::Standard => PieceSetAsset{
+                tex : load_texture("gfx/pieces_sm.png").await?,
+                base_scale : 1.7,
+            },
+            PieceSet::Minimal => PieceSetAsset{
+                tex : load_texture("gfx/pieces_minimal.png").await?,
+                base_scale : 1.3
+            }
+        };
+        Ok(set)
+    }
+}
 
 use crate::{theme, Player};
 
 pub struct Assets{
-    pub pieces : Texture2D,
     pub btn_takeback : Texture2D,
     pub btn_exit : Texture2D,
     pub btn_lines : Texture2D,
@@ -131,6 +168,11 @@ impl Assets{
 
 
     pub async fn load()->Result<Assets,FileError> {
+        // Pieceset is not stored in here,
+        // but we still load the default so it's
+        // slotted in the loading screen.
+        set_pieceset(PieceSet::Standard).await?;
+
 
         // unwrap font error because I don't wanna cast
         // and I can't update mquad :(
@@ -155,12 +197,9 @@ impl Assets{
                 load_texture(&format!("diags/{}.png",name)).await?
             );
         }
-    
-        let pieces = load_texture("gfx/pieces_sm.png").await?;
 
 
         Ok(Assets{
-            pieces ,
             btn_takeback : load_texture("gfx/btn_takeback.png").await?,
             btn_exit : load_texture("gfx/btn_exit.png").await?,
             btn_lines : load_texture("gfx/btn_lines.png").await?,
@@ -202,8 +241,27 @@ impl Assets{
 
 lazy_static! {
     pub static ref ASSETS : OnceLock<Assets> = OnceLock::new();
+
+    pub static ref PIECESET : Arc<RwLock<Option<PieceSetAsset>>> = Arc::new(RwLock::new(None));
 }
 
+pub fn get_pieceset() -> Option<PieceSetAsset>{
+    PIECESET.read().unwrap().clone()
+}
+pub fn get_pieceset_unchecked() -> PieceSetAsset{
+    get_pieceset().unwrap()
+}
+pub async fn set_pieceset(set : PieceSet) -> Result<(),FileError>{
+    if let Some(..) = get_pieceset(){
+        println!("Invalidating old pieceset tex.");
+        PIECESET.write().unwrap().as_mut().unwrap().tex.delete();
+    }
+
+    let psa = PieceSetAsset::load(set).await?;
+    println!("Loaded standard pieceset.");
+    *PIECESET.write().unwrap() = Some(psa);
+    Ok(())
+}
 
 pub fn get_assets_unchecked()->&'static Assets{
     ASSETS.get().expect("Assets not loaded.")

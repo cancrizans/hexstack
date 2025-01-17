@@ -1,6 +1,6 @@
 use std::iter::once;
 
-use crate::{assets::Assets, theme, Piece, PieceType, Player, Position, Tile};
+use crate::{assets::Assets, theme, Piece, Species, Player, Position, Tile};
 use macroquad::prelude::*;
 
 #[derive(Clone)]
@@ -75,7 +75,7 @@ impl PositionEditor{
         }
 
         once(None).chain(
-            (0..7).map(|i|PieceType::from_code(i))
+            (0..7).map(|i|Species::from_code(i))
             .flat_map(|species|[
                 Piece{color:Player::White,species},
                 Piece{color:Player::Black,species}

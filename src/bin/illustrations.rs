@@ -2,7 +2,7 @@
 
 use hexstack::assets::ASSETS;
 use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, Position, Tall, Tile};
-use hexstack::PieceType;
+use hexstack::Species;
 use macroquad::prelude::*;
 
 struct Illustration{
@@ -44,7 +44,7 @@ impl Illustration{
     }
 }
 
-fn draw_piece(color : Player, species : PieceType, tile : Tile){
+fn draw_piece(color : Player, species : Species, tile : Tile){
     let (x,y) = tile.to_world(false).into();
     Piece{color,species}.draw(x, y,  1.0);
 }
@@ -93,15 +93,15 @@ async fn main(){
     const MOV_SH : (u32,u32) = (300,300);
 
     for (n,pt, zoom) in [
-        ("flat", PieceType::Flat,0.4),
-        ("arm",PieceType::Lone(Tall::Hand),0.27),
-        ("blind",PieceType::Lone(Tall::Blind),0.27),
-        ("star", PieceType::Lone(Tall::Star),0.3)
+        ("flat", Species::Flat,0.4),
+        ("arm",Species::Lone(Tall::Hand),0.27),
+        ("blind",Species::Lone(Tall::Blind),0.27),
+        ("star", Species::Lone(Tall::Star),0.3)
     ]{
         for (cn,color) in [("white",Player::White), ("black",Player::Black)]{
 
             let start_tile = match pt {
-                PieceType::Lone(tall) => match tall{
+                Species::Lone(tall) => match tall{
                     Tall::Star => match color{
                         Player::White => Tile::from_xyz(0, -1, 1).unwrap(),
                         Player::Black => Tile::from_xyz(0, 1, -1).unwrap(),
@@ -150,10 +150,10 @@ async fn main(){
 
     Tile::draw_board(false);
     let (x,y) = Tile::from_xyz(0, 1, -1).unwrap().to_world(false).into();
-    Piece{color : Player::White, species : PieceType::Flat}.draw(x, y,  1.0);
+    Piece{color : Player::White, species : Species::Flat}.draw(x, y,  1.0);
 
     let (x,y) = Tile::from_xyz(0, -1, 1).unwrap().to_world(false).into();
-    Piece{color : Player::White, species : PieceType::Lone(Tall::Hand)}.draw(x, y,  1.0);
+    Piece{color : Player::White, species : Species::Lone(Tall::Hand)}.draw(x, y,  1.0);
 
 
     i.dump().await;
@@ -164,7 +164,7 @@ async fn main(){
 
     Tile::draw_board(false);
     let (x,y) = Tile::from_xyz(0, 1, -1).unwrap().to_world(false).into();
-    Piece{color : Player::White, species : PieceType::Stack(Tall::Hand)}.draw(x, y,  1.0);
+    Piece{color : Player::White, species : Species::Stack(Tall::Hand)}.draw(x, y,  1.0);
 
     let (sx,sy) = Tile::from_xyz(0, -1, 1).unwrap().to_world(false).into();
     
@@ -201,10 +201,10 @@ async fn main(){
             c11.draw_highlight_fill(Color::from_hex(0xc07070),false);
         }
 
-        draw_piece(Player::White, PieceType::Flat, if post {c00} else {oritile});
-        draw_piece(Player::White, PieceType::Flat, c10);
-        draw_piece(Player::Black, PieceType::Flat, c01);
-        draw_piece(Player::Black, PieceType::Flat, c11);
+        draw_piece(Player::White, Species::Flat, if post {c00} else {oritile});
+        draw_piece(Player::White, Species::Flat, c10);
+        draw_piece(Player::Black, Species::Flat, c01);
+        draw_piece(Player::Black, Species::Flat, c11);
 
 
         if post {

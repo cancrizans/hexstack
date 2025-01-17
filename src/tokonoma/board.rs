@@ -3,7 +3,7 @@ use itertools::Itertools;
 use macroquad::prelude::*;
 use std::{fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
 use memoize::memoize;
-use crate::{arrows::draw_arrow, assets::{Assets, get_assets_unchecked, ASSETS}};
+use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, Assets, ASSETS}};
 
 
 
@@ -211,14 +211,14 @@ impl Tile{
     fn move_neighbours(&self, kind : &Piece) -> [Option<Tile>;6]{
 
         let white_offsets : [Option<Delta>;6] = match kind.species{
-            PieceType::Flat => [
+            Species::Flat => [
                 Some(Delta::WH_FORWARD), 
                 Some(Delta::WH_FRONTDOWN),
                 Some(Delta::WH_FRONTUP),
                 None, None, None
             ],
             
-            PieceType::Lone(tall) | PieceType::Stack(tall)
+            Species::Lone(tall) | Species::Stack(tall)
             => {
                 match tall {
                     Tall::Hand => [
@@ -324,7 +324,9 @@ impl Tile{
         draw_hexagon(x, y, 1.0, 0.0, true,BLACK, color);
     }
 
-    pub fn draw_move_target(&self, color : Player, piece_tex : Texture2D, flip_board : bool){
+    pub fn draw_move_target(&self, color : Player,  flip_board : bool){
+        let tex = get_pieceset_unchecked().tex;
+        
         let (x,y) = self.to_world(flip_board);
         const R : f32 = 1.0;
         let src_off = match color{
@@ -333,7 +335,7 @@ impl Tile{
         };
 
         draw_texture_ex(
-            piece_tex,
+            tex,
             x-R,
             y-R,
             WHITE, DrawTextureParams{
@@ -342,8 +344,7 @@ impl Tile{
                 ..Default::default()
             }
         )
-        // draw_circle(x, y, R, WHITE);
-        // draw_circle_lines(x, y, R, 0.1, BLACK);
+        
     }
 
     fn tile_color(&self) -> Color{
@@ -561,11 +562,8 @@ impl Display for Tile{
 
 
 
-
-
-
-
 #[derive(Clone, Copy,PartialEq, Eq,Hash, Debug)]
+/// Identifies the player / color.
 pub enum Player{White,Black}
 impl Player{
     pub fn flip(&self)->Player{
@@ -607,20 +605,20 @@ impl Tall{
 }
 
 
-
+/// Piece species.
 #[derive(Clone, Copy,PartialEq, Eq,Hash, Debug)]
-pub enum PieceType{
+pub enum Species{
     Flat,
     Lone(Tall),
     Stack(Tall),
 }
 
-impl PieceType{
-    pub fn unstack(self) -> Box<dyn Iterator<Item=PieceType>>{
+impl Species{
+    pub fn unstack(self) -> Box<dyn Iterator<Item=Species>>{
         match self{
-            PieceType::Stack(tall) => Box::new([
-                PieceType::Flat,
-                PieceType::Lone(tall),
+            Species::Stack(tall) => Box::new([
+                Species::Flat,
+                Species::Lone(tall),
             ].into_iter()),
             _ => Box::new([self].into_iter())
         }
@@ -630,24 +628,24 @@ impl PieceType{
 
     pub fn value(&self) -> f32{
         match self {
-            PieceType::Flat => {
+            Species::Flat => {
                 2.0
             },
-            PieceType::Lone(tall) => tall.value(),
-            PieceType::Stack(tall) => (PieceType::Flat.value() + tall.value()) - 0.2,
+            Species::Lone(tall) => tall.value(),
+            Species::Stack(tall) => (Species::Flat.value() + tall.value()) - 0.2,
         }
     }
 
     #[inline]
     pub const fn code(&self) -> u8{
         match self{
-            PieceType::Flat => 0,
-            PieceType::Lone(tall) => match tall{
+            Species::Flat => 0,
+            Species::Lone(tall) => match tall{
                 Tall::Hand => 1,
                 Tall::Blind => 2,
                 Tall::Star => 3
             },
-            PieceType::Stack(tall) => match tall{
+            Species::Stack(tall) => match tall{
                 Tall::Hand => 4,
                 Tall::Blind => 5,
                 Tall::Star => 6
@@ -655,15 +653,15 @@ impl PieceType{
         }
     }
 
-    pub const fn from_code(code : u8) -> PieceType{
+    pub const fn from_code(code : u8) -> Species{
         match code {
-            0 => PieceType::Flat,
-            1 => PieceType::Lone(Tall::Hand),
-            2 => PieceType::Lone(Tall::Blind),
-            3 => PieceType::Lone(Tall::Star),
-            4 => PieceType::Stack(Tall::Hand),
-            5 => PieceType::Stack(Tall::Blind),
-            6 => PieceType::Stack(Tall::Star),
+            0 => Species::Flat,
+            1 => Species::Lone(Tall::Hand),
+            2 => Species::Lone(Tall::Blind),
+            3 => Species::Lone(Tall::Star),
+            4 => Species::Stack(Tall::Hand),
+            5 => Species::Stack(Tall::Blind),
+            6 => Species::Stack(Tall::Star),
             _ => unreachable!()
         }
     }
@@ -673,46 +671,43 @@ impl PieceType{
         const TALL_POS_WEIGHT : f32 = 0.1;
 
         match self{
-            PieceType::Flat => FLAT_POS_WEIGHT,
-            PieceType::Lone(..) => TALL_POS_WEIGHT,
-            PieceType::Stack(..) => FLAT_POS_WEIGHT + TALL_POS_WEIGHT,
+            Species::Flat => FLAT_POS_WEIGHT,
+            Species::Lone(..) => TALL_POS_WEIGHT,
+            Species::Stack(..) => FLAT_POS_WEIGHT + TALL_POS_WEIGHT,
         }
     }
 
-    pub fn to_lone(&self) -> PieceType{
+    pub fn to_lone(&self) -> Species{
         match self{
-            PieceType::Flat | PieceType::Lone(..) => *self,
-            PieceType::Stack(tall) => PieceType::Lone(*tall)
+            Species::Flat | Species::Lone(..) => *self,
+            Species::Stack(tall) => Species::Lone(*tall)
         }
     }
 
-    pub const ALL : [PieceType;7] = [
-        PieceType::Flat, 
-        PieceType::Lone(Tall::Hand),
-        PieceType::Lone(Tall::Blind),
-        PieceType::Lone(Tall::Star),
-        PieceType::Stack(Tall::Hand),
-        PieceType::Stack(Tall::Blind),
-        PieceType::Stack(Tall::Star),
+    pub const ALL : [Species;7] = [
+        Species::Flat, 
+        Species::Lone(Tall::Hand),
+        Species::Lone(Tall::Blind),
+        Species::Lone(Tall::Star),
+        Species::Stack(Tall::Hand),
+        Species::Stack(Tall::Blind),
+        Species::Stack(Tall::Star),
     ];
 }
 
+/// Largely deprecated structure, piece with color + species.
 #[derive(Clone, Copy,PartialEq, Eq,Hash, Debug)]
 pub struct Piece{
     pub color : Player,
-    pub species : PieceType
+    pub species : Species
 }
-
 
 impl Piece{
     pub fn draw(&self, x : f32, y: f32,  scale: f32){
         
-        // let col = self.color.to_color();
-        // let outcol = self.color.flip().to_color();
-        
         let sx_single = match self.species{
-            PieceType::Flat => 0,
-            PieceType::Lone(tall) | PieceType::Stack(tall) => match tall{
+            Species::Flat => 0,
+            Species::Lone(tall) | Species::Stack(tall) => match tall{
                 Tall::Hand => 1,
                 Tall::Star => 2,
                 Tall::Blind => 3
@@ -725,17 +720,18 @@ impl Piece{
             Player::Black => 2,
             Player::White => 0
         } + match self.species{
-            PieceType::Stack(..) => 1,
+            Species::Stack(..) => 1,
             _ => 0
         };
 
         let tile_size = 128.0;
-        let world_size = 1.7 * scale;
+        let pieceset = get_pieceset_unchecked();
+        let world_size = pieceset.base_scale * scale;
 
         let sx = sx as f32;
         let sy = sy as f32;
-        let piece_tex = get_assets_unchecked().pieces;
-        draw_texture_ex(piece_tex, 
+        
+        draw_texture_ex(pieceset.tex, 
             x - world_size * 0.5, y - world_size * 0.5,
                 WHITE, DrawTextureParams{
             dest_size : Some(vec2(1.0, 1.0) * world_size),
@@ -749,9 +745,9 @@ impl Piece{
     pub fn unstack(self) -> Box<dyn Iterator<Item=Piece>>{
         let color = self.color;
         match self.species{
-            PieceType::Stack(tall) => Box::new([
-                Piece{color, species: PieceType::Flat},
-                Piece{color, species:PieceType::Lone(tall)},
+            Species::Stack(tall) => Box::new([
+                Piece{color, species: Species::Flat},
+                Piece{color, species:Species::Lone(tall)},
             ].into_iter()),
             _ => Box::new([self].into_iter())
         }
@@ -805,22 +801,22 @@ impl Captured{
         Captured([0;7])
     }
     #[inline]
-    pub fn push(&mut self, pt : PieceType){
+    pub fn push(&mut self, pt : Species){
         let idx = pt.code();
         self.0[idx as usize] += 1;
     }
 
-    pub fn iter_counts(&self) -> impl Iterator<Item = (PieceType,u8)> + '_{
+    pub fn iter_counts(&self) -> impl Iterator<Item = (Species,u8)> + '_{
         self.0.iter().enumerate()
         .filter(|(_,count)|**count > 0)
         .map(|(code , count)| 
-            (PieceType::from_code(code as u8),*count)
+            (Species::from_code(code as u8),*count)
         )
     }
-    pub fn iter(&self) -> impl Iterator<Item = PieceType> + '_{
+    pub fn iter(&self) -> impl Iterator<Item = Species> + '_{
         self.0.iter().enumerate()
         .flat_map(|(code,count)| {
-            let pt = PieceType::from_code(code as u8);
+            let pt = Species::from_code(code as u8);
             std::iter::repeat_n(pt, *count as usize)
         })
     }
@@ -834,7 +830,7 @@ impl Captured{
         .count()
     }
 
-    pub fn extend(&mut self, iterator : impl IntoIterator<Item = PieceType>){
+    pub fn extend(&mut self, iterator : impl IntoIterator<Item = Species>){
         iterator.into_iter().for_each(|pt| self.push(pt))
     }
 
@@ -952,13 +948,13 @@ impl BitSet{
         self.0 > 0
     }
 
-    pub fn generate_move_destinations(&self, color : Player, species : PieceType) -> BitSet{
+    pub fn generate_move_destinations(&self, color : Player, species : Species) -> BitSet{
         const M : i32 = ROW_OFFSET as i32;
 
         let shifts = match species {
-            PieceType::Flat => [1,M,-M+1].iter(),
-            PieceType::Lone(tall) 
-            | PieceType::Stack(tall)
+            Species::Flat => [1,M,-M+1].iter(),
+            Species::Lone(tall) 
+            | Species::Stack(tall)
             => match tall{
                 Tall::Hand => [2,-M,M-1,-1].iter(),
                 Tall::Blind => [2*M,-2*M+2,-M,M-1,-2].iter(),
@@ -984,7 +980,7 @@ impl BitSet{
 
         buffer & Self::BOARD_MASK
     }
-    pub fn move_destinations_from_tile(from_tile : Tile,color : Player, species : PieceType) -> BitSet{
+    pub fn move_destinations_from_tile(from_tile : Tile,color : Player, species : Species) -> BitSet{
         Self::tile_mask(&from_tile).generate_move_destinations(color, species)
     }
 
@@ -1068,7 +1064,7 @@ impl PieceMap{
     }
 
 
-    pub fn into_iter(self) -> impl Iterator<Item = (Tile,PieceType)>{
+    pub fn into_iter(self) -> impl Iterator<Item = (Tile,Species)>{
         
         BOARD_BITS.into_iter().flat_map(move |bit|{
             let (flat,tall0,tall1) = (
@@ -1083,15 +1079,15 @@ impl PieceMap{
     }
 
     #[inline]
-    const fn encode_species(species : PieceType) -> (bool,bool,bool){
+    const fn encode_species(species : Species) -> (bool,bool,bool){
         let flat = match species{
-            PieceType::Flat | PieceType::Stack(..) => true,
-            PieceType::Lone(..) => false
+            Species::Flat | Species::Stack(..) => true,
+            Species::Lone(..) => false
         };
 
         let (t0,t1) = match species{
-            PieceType::Flat => (false, false),
-            PieceType::Lone(tall) | PieceType::Stack(tall) => 
+            Species::Flat => (false, false),
+            Species::Lone(tall) | Species::Stack(tall) => 
             Self::encode_tall(tall)
         };
 
@@ -1118,24 +1114,24 @@ impl PieceMap{
     }
 
     #[inline]
-    const fn decode_species(flat : bool, tall0 : bool, tall1 : bool) -> Option<PieceType>{
+    const fn decode_species(flat : bool, tall0 : bool, tall1 : bool) -> Option<Species>{
         let tall = Self::decode_tall(tall0, tall1);
         if flat{
             if let Some(tall) = tall{
-                Some(PieceType::Stack(tall))
+                Some(Species::Stack(tall))
             } else {
-                Some(PieceType::Flat)
+                Some(Species::Flat)
             }
         } else {
             if let Some(tall) = tall{
-                Some(PieceType::Lone(tall))
+                Some(Species::Lone(tall))
             } else {
                 None
             }
         }
     }
 
-    pub fn set(&mut self, location : Tile, species : PieceType){
+    pub fn set(&mut self, location : Tile, species : Species){
         let (sf, st0, st1) = Self::encode_species(species);
 
         let mask = BitSet::tile_mask(&location);
@@ -1164,16 +1160,16 @@ impl PieceMap{
     }
 
 
-    pub fn locate_species(&self, species : PieceType) -> BitSet{
+    pub fn locate_species(&self, species : Species) -> BitSet{
         // Note: this is maybe inefficient because
         // it is called twice for lones and stacks.
 
         match species{
-            PieceType::Flat => self.locate_lone_flats(),
-            PieceType::Lone(tall) => {
+            Species::Flat => self.locate_lone_flats(),
+            Species::Lone(tall) => {
                 self.locate_talls(tall) & !self.flats
             },
-            PieceType::Stack(tall) => {
+            Species::Stack(tall) => {
                 self.locate_talls(tall) & self.flats
             }
         }
@@ -1181,7 +1177,7 @@ impl PieceMap{
     }
     
 
-    pub fn pull_moving_piece(&mut self, location : Tile) -> PieceType{
+    pub fn pull_moving_piece(&mut self, location : Tile) -> Species{
         let mask = BitSet::tile_mask(&location);
         let orig_flat = (self.flats & mask).is_not_empty();
 
@@ -1193,16 +1189,16 @@ impl PieceMap{
             if let Some(tall) = orig_tall{
                 self.talls[0].set_mask_bool(false,mask);
                 self.talls[1].set_mask_bool(false,mask);
-                PieceType::Lone(tall) 
+                Species::Lone(tall) 
             } else {
                 self.flats.set_mask_bool(false, mask);
-                PieceType::Flat
+                Species::Flat
             }
         } else {
             if let Some(tall) = orig_tall{
                 self.talls[0].set_mask_bool(false,mask);
                 self.talls[1].set_mask_bool(false,mask);
-                PieceType::Lone(tall)
+                Species::Lone(tall)
             } else {
                 unreachable!()
             }
@@ -1231,31 +1227,31 @@ impl PieceMap{
         self.flats.is_not_empty() | self.talls[0].is_not_empty() | self.talls[1].is_not_empty()
     }
 
-    pub fn toss(&mut self, location : Tile, piece : PieceType){
+    pub fn toss(&mut self, location : Tile, piece : Species){
         let mask = BitSet::tile_mask(&location);
 
         let flat = (self.flats & mask).is_not_empty();
 
         match piece{
-            PieceType::Flat => {
+            Species::Flat => {
                 assert!(!flat);
                 self.flats.set_mask_bool(true, mask);
                 
             },
-            PieceType::Lone(tall) => {
+            Species::Lone(tall) => {
                 let (tall0, tall1) = Self::encode_tall(tall);
                 self.talls[0].set_mask_bool(tall0, mask);
                 self.talls[1].set_mask_bool(tall1, mask);
                 
             },
-            PieceType::Stack(..) => unreachable!()
+            Species::Stack(..) => unreachable!()
         
         };
 
     }
 
     #[inline]
-    pub fn get(&self, location : Tile) -> Option<PieceType>{
+    pub fn get(&self, location : Tile) -> Option<Species>{
         let mask = BitSet::tile_mask(&location);
         let (flat,tall0,tall1) = (
             (self.flats & mask).is_not_empty(),

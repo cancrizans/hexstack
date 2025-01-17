@@ -1,7 +1,7 @@
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
 use futures::executor::block_on;
-use hexstack::{Piece, PieceType, Player, Position, Tile};
+use hexstack::{Piece, Species, Player, Position, Tile};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let state0 = Position::setup();
@@ -36,7 +36,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("stage attack scan", |b|b.iter(||{
         let mut state = translated.clone();
         let attacking_player = state.to_play();
-        let kills : Vec<(Tile,PieceType)> = state.stage_attack_scan(attacking_player).into_iter().collect();
+        let kills : Vec<(Tile,Species)> = state.stage_attack_scan(attacking_player).into_iter().collect();
         black_box(kills)
     }));
 

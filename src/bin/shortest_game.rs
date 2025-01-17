@@ -1,7 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use hexstack::tokonoma::{PieceType, Player, Ply, Score, Position};
+use hexstack::tokonoma::{Species, Player, Ply, Score, Position};
 
 #[allow(dead_code)]
 fn search_shortest(state : Position, depth : usize) -> Option<Vec<Ply>>{
@@ -56,7 +56,7 @@ fn search_min(state : Position, depth : usize) -> (Score,Vec<Ply>){
     plies.into_iter().flat_map(|ply|{
         let mut copy = state.clone();
 
-        if (copy.to_play() == Player::White) | (copy.clone().pull_moving_piece(copy.to_play(),ply.from_tile) == PieceType::Flat){
+        if (copy.to_play() == Player::White) | (copy.clone().pull_moving_piece(copy.to_play(),ply.from_tile) == Species::Flat){
             copy.apply_move(ply);
             let (score, mut game) = search_min(copy, depth-1);
             game.push(ply);

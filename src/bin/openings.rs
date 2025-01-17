@@ -1,8 +1,8 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, sync::{Arc, Mutex}};
 
 use futures::executor::block_on;
 
-use hexstack::tokonoma::{Player,Position,Captured};
+use hexstack::tokonoma::{Captured, Player, Position, TranspositionalTable};
 
 // const OPENING_DEPTH : usize = 2;
 const SAMPLES : usize = 100;
@@ -46,7 +46,7 @@ fn simulate(starting_state : Position) -> SimResults{
             }
 
             let scored_moves = 
-                futures::executor::block_on(state.clone().moves_with_score(BOT_DEPTH,false));
+                futures::executor::block_on(state.clone().moves_with_score(BOT_DEPTH,false, None));
 
             let (ply,_) = scored_moves.first().unwrap();
             state.apply_move(*ply);
@@ -70,6 +70,7 @@ fn simulate(starting_state : Position) -> SimResults{
 }
 
 fn main(){
+    let table = Arc::new(Mutex::new(TranspositionalTable::new()));
     let state0 = Position::setup();
     let caps = HashMap::from_iter([Player::White,Player::Black].map(|p|(p,Captured::empty())));
 
@@ -82,7 +83,7 @@ fn main(){
         copy.apply_move(first_move);
         
         let los_evaluatos = block_on(
-            copy.clone().moves_with_score(8, false));
+            copy.clone().moves_with_score(9, false, Some(table.clone())));
 
         for (response, eval) in los_evaluatos{
             let hentry2 = copy.compute_history_entry(response,caps.clone());

@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 use crate::assets::{get_assets_unchecked, Assets, ASSETS};
 use crate::tokonoma::{board::Piece, EvalResult, Position};
 
-use crate::tokonoma::MatchState;
+use crate::tokonoma::{MatchState, TranspositionalTable};
 
 use crate::{theme::set_theme, ui::{editor::PositionEditor, rulesheet::read_rulesheet}};
 use crate::ui::{Button, MqUi};
@@ -99,6 +100,7 @@ struct Bot{
 
     result_future : Option<Coroutine<Vec<(Ply,EvalResult)>>>,
     last_used_depth : Option<usize>,
+    transposition_table : Arc<Mutex<TranspositionalTable>>,
 }
 
 impl Bot{
@@ -107,7 +109,8 @@ impl Bot{
             depth ,
             blundering_probability,
             result_future : None,
-            last_used_depth : None
+            last_used_depth : None,
+            transposition_table : Arc::new(Mutex::new(TranspositionalTable::new())),
         }
     }
     
@@ -130,7 +133,8 @@ impl Gamer for Bot{
 
         self.last_used_depth = Some(depth);
 
-        self.result_future = Some(start_coroutine(state.moves_with_score(depth,true)));
+        self.result_future = Some(start_coroutine(
+            state.moves_with_score(depth,true,Some(self.transposition_table.clone()))));
     }
 
     fn poll_answer(&mut self) -> Option<Decision> {
@@ -237,10 +241,10 @@ impl Gamer for Human{
                 }
             }
 
-            let piece_tex = assets.pieces;
+            
             if let Some(selected) = self.selected_tile{
                 av_moves.iter().filter(|p|p.from_tile == selected)
-                    .for_each(|p|p.to_tile.draw_move_target(as_player,piece_tex, false));
+                    .for_each(|p|p.to_tile.draw_move_target(as_player, false));
             }
 
             if let Some(mouse_hover) = Self::mouse_tile(ui.camera){

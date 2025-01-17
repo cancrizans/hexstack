@@ -8,4 +8,4 @@ pub mod assets;
 pub mod theme;
 
 
-pub use tokonoma::{Position,Player, Ply,Tall, Tile, Piece, PieceType,neighbours_attack, neighbours_move,};
+pub use tokonoma::{Position,Player, Ply,Tall, Tile, Piece, Species,neighbours_attack, neighbours_move,};

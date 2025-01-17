@@ -8,6 +8,7 @@ use core::f32;
 
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, fmt::Display};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use macroquad::prelude::*;
@@ -18,6 +19,8 @@ use crate::arrows;
 
 
 #[derive(Copy,Clone, PartialEq, PartialOrd, Debug)]
+/// Evaluation score. Can be finite or win-in-N.
+/// Positive is for white, negative is for black.
 pub struct Score(f32);
 
 impl Score{
@@ -26,13 +29,15 @@ impl Score{
 
     const EVEN : Score = Score(0.0);
 
+    /// construct a finite score from a "small" float.
     fn finite(val : f32) -> Score{
         assert!(val.abs() < Self::FINITE_THRESHOLD);
         Score(val)
     }
 
-    pub fn win_now(player : Player) -> Score{
-        match player{
+    /// construct a score that represents an immediate victory.
+    pub fn win_now(winner : Player) -> Score{
+        match winner{
             Player::Black => Score(-Self::WIN_BASELINE),
             Player::White => Score(Self::WIN_BASELINE)
         }
@@ -82,8 +87,12 @@ impl Display for Score{
 
 
 #[derive(Clone, Copy,Debug)]
+/// Output of an engine node evaluation.
 pub struct EvalResult{
+    /// Computed score
     pub score : Score,
+    /// Total number of sub-nodes examined in the computation of the score
+    /// Does not include pruned branches or cache hits.
     pub nodes : usize,
 }
 
@@ -98,17 +107,15 @@ impl EvalResult{
 
 
 #[derive(Clone,Debug, PartialEq, Eq)]
+/// A game position.
 pub struct Position{
-    // board : Board,
     to_play : Player,
-    // pieces : BoardMap<Piece>,
-
     pieces : [PieceMap;2],
-
 }
 
 
 impl Position{
+    /// Reference to a player's pieces.
     #[inline]
     pub fn get_pieces(&self, color : Player) -> &PieceMap{
         match color{
@@ -143,13 +150,13 @@ impl Position{
 
 
         [
-            (0,sbr, PieceType::Stack(Tall::Hand)),
-            (1,sbr-1, PieceType::Stack(Tall::Star)),
-            (0,sbr-1, PieceType::Stack(Tall::Blind)),
-            (-1,sbr, PieceType::Stack(Tall::Blind)),
+            (0,sbr, Species::Stack(Tall::Hand)),
+            (1,sbr-1, Species::Stack(Tall::Star)),
+            (0,sbr-1, Species::Stack(Tall::Blind)),
+            (-1,sbr, Species::Stack(Tall::Blind)),
 
-            (2,sbr-2, PieceType::Stack(Tall::Hand)),
-            (-2,sbr, PieceType::Flat),
+            (2,sbr-2, Species::Stack(Tall::Hand)),
+            (-2,sbr, Species::Flat),
 
         ].into_iter().for_each(|(x,y, species)|{
             let z = -x-y;
@@ -289,7 +296,7 @@ impl Position{
 
             BitSet::move_destinations_from_tile(from_tile, active, species)
             .intersection(match species{
-                PieceType::Flat => viable_destinations_flats,
+                Species::Flat => viable_destinations_flats,
                 _ => viable_destinations_talls
             }).into_iter()
             .map(move |n|
@@ -301,7 +308,7 @@ impl Position{
     }
 
     #[inline]
-    pub fn pull_moving_piece(&mut self, color : Player, from_tile : Tile) -> PieceType{
+    pub fn pull_moving_piece(&mut self, color : Player, from_tile : Tile) -> Species{
         
         let pieces = self.get_pieces_mut(color);
         
@@ -446,7 +453,7 @@ impl Position{
         double_attacks.get_doubles()
     }
 
-    pub async fn moves_with_score(self, depth : usize, mquad_frame_await : bool) -> Vec<(Ply, EvalResult)>{
+    pub async fn moves_with_score(self, depth : usize, mquad_frame_await : bool, transp : Option<Arc<Mutex<TranspositionalTable>>>) -> Vec<(Ply, EvalResult)>{
         
         if depth == 0{
             let mut depth0_moves : Vec<(Ply, EvalResult)> = self.valid_moves().into_iter()
@@ -466,7 +473,11 @@ impl Position{
         let mut scored_moves : Vec<(Ply, EvalResult)> = vec![];
         // let mut nodes_accum = 0;
 
-        let mut transp_table = TranspositionalTable::new();
+        let transp_table = if let Some(transp) = transp{
+            transp
+        } else {
+            Arc::new(Mutex::new(TranspositionalTable::new()))
+        };
 
         
 
@@ -477,7 +488,7 @@ impl Position{
 
             let mut copy = self.clone();
             copy.apply_move(m);
-            let evaluation = copy.eval(depth-1, &mut transp_table);
+            let evaluation = copy.eval(depth-1,transp_table.clone());
             scored_moves.push((m, evaluation));
             // nodes_accum += evaluation.nodes;
 
@@ -501,7 +512,7 @@ impl Position{
     }
     
     #[inline]
-    fn eval(self, depth : usize, transp : &mut TranspositionalTable) -> EvalResult{
+    fn eval(self, depth : usize, transp : Arc<Mutex<TranspositionalTable>>) -> EvalResult{
         self.eval_alphabeta(depth, Score::win_now(Player::Black), Score::win_now(Player::White), transp, 0)
     }
 
@@ -510,7 +521,7 @@ impl Position{
             let attacker = defender.flip();
             if let Some(species) = self.get_pieces(attacker)
                 .get(Tile::corner(defender)){
-                if species == PieceType::Flat{
+                if species == Species::Flat{
                     return Some(attacker);
                 }
             }
@@ -532,6 +543,7 @@ impl Position{
 
     #[inline]
     fn passed_flat_distance(&self, player : Player) -> u8{
+        const MAX_FLAT_DIST : u8 = 8;
         let opponent_house = Tile::corner(player.flip());
         let opponent_pieces = self.get_pieces(player.flip());
         let active_pieces = self.get_pieces(player);
@@ -544,22 +556,23 @@ impl Position{
 
 
         let mut flats_diffusion = active_pieces.locate_lone_flats();
+        if !flats_diffusion.is_not_empty(){return MAX_FLAT_DIST;}
 
-        for current_distance in 0..=4{
+        for current_distance in 0..=5{
             if target_diffusion.intersection(flats_diffusion).is_not_empty(){
                 return current_distance;
             }
 
             if current_distance % 2 == 0{
-                flats_diffusion = flats_diffusion.generate_move_destinations(player, PieceType::Flat);
+                flats_diffusion = flats_diffusion.generate_move_destinations(player, Species::Flat);
                 flats_diffusion &= walkable;
             } else {
-                target_diffusion = target_diffusion.generate_move_destinations(player.flip(), PieceType::Flat);   
+                target_diffusion = target_diffusion.generate_move_destinations(player.flip(), Species::Flat);   
                 target_diffusion &= walkable;
             }
         };
 
-        8
+        MAX_FLAT_DIST
     }
     
     #[inline]
@@ -580,13 +593,13 @@ impl Position{
             for tile in active.drain(){
                 if let Some(piece) = active_pieces.get(tile){
                     match piece {
-                        PieceType::Flat => return current_distance,
-                        PieceType::Stack(..) => return current_distance+1,
-                        PieceType::Lone(..) => {}
+                        Species::Flat => return current_distance,
+                        Species::Stack(..) => return current_distance+1,
+                        Species::Lone(..) => {}
                     };
                 };
 
-                neighbours_move(tile, Piece{color : player.flip(), species:PieceType::Flat})
+                neighbours_move(tile, Piece{color : player.flip(), species:Species::Flat})
                 .iter().for_each(|n|{
                     if let Some(n) = n{
                         match opponent_pieces.get(*n){
@@ -606,13 +619,28 @@ impl Position{
 
     #[inline]
     fn passed_flat_score(&self, player : Player) -> f32{
-        match self.passed_flat_distance(player){
-            0 => 200.0,
-            1 => 30.0,
-            2 => 10.0,
-            3 => 5.0,
-            4 => 1.0,
-            _ => 0.0
+        let distance = self.passed_flat_distance(player);
+        if self.to_play == player {
+            match distance{
+                0 => 200.0,
+                1 => 200.0,
+                2 => 30.0,
+                3 => 10.0,
+                4 => 5.0,
+                5 => 1.0,
+                _ => 0.0
+            }
+        }
+        else {
+            match distance{
+                0 => 200.0,
+                1 => 100.0,
+                2 => 25.0,
+                3 => 7.0,
+                4 => 3.0,
+                5 => 0.5,
+                _ => 0.0
+            }
         }
     }
 
@@ -630,12 +658,14 @@ impl Position{
             return Score::win_now(winner);
         }
         
-        // let white_moves = self.valid_moves_for(Player::White);
-        // let white_moves_count = white_moves.len();
         let white_moves_count = self.mobility(Player::White);
-        // let black_moves = self.valid_moves_for(Player::Black);
-        // let black_moves_count = black_moves.len();
+        if white_moves_count == 0{
+            return Score::win_now(Player::Black)
+        }
         let black_moves_count = self.mobility(Player::Black);
+        if black_moves_count == 0{
+            return Score::win_now(Player::White)
+        }
 
         let mobility_score = 0.1 * (
             white_moves_count as f32
@@ -647,22 +677,6 @@ impl Position{
 
         let finite_score = [Player::White,Player::Black].into_iter()
         .map(|color|{
-
-            // let mut single_attacked = HashSet::new();
-            // let mut double_attacked = HashSet::new();
-
-            // let attacker_moves = match color{
-            //     Player::Black => &white_moves,
-            //     Player::White => &black_moves
-            // };
-            // attacker_moves.iter().for_each(|ply|{
-            //     let dest = ply.to_tile;
-            //     if single_attacked.remove(&dest){
-            //         double_attacked.insert(dest);
-            //     } else {
-            //         single_attacked.insert(dest);
-            //     }
-            // });
             let double_attacked = self.double_attack_map(color.flip());
 
             let multiplier = match color{
@@ -672,8 +686,11 @@ impl Position{
 
             let masked_pieces = self.get_pieces(color).mask(!double_attacked);
 
-            PieceType::ALL.into_iter().map(|species|{
+            Species::ALL.into_iter().map(|species|{
                 let instances = masked_pieces.locate_species(species);
+                if !instances.is_not_empty(){
+                    return 0.0
+                }
 
                 let signed_piece_value = multiplier * species.value() * (instances.count() as f32);
 
@@ -723,7 +740,8 @@ impl Position{
         
 
 
-        let passed_flat_score = self.passed_flat_score(Player::White) - self.passed_flat_score(Player::Black);
+        let passed_flat_score = self.passed_flat_score(Player::White) 
+            - self.passed_flat_score(Player::Black);
 
         const TEMPO_BONUS : f32 = 0.5;
         let tempo_bonus_score = match self.to_play {
@@ -739,13 +757,13 @@ impl Position{
 
     fn eval_alphabeta(self, 
         depth : usize, 
-        alpha : Score, beta : Score, transp : &mut TranspositionalTable,
+        alpha : Score, beta : Score, transp : Arc<Mutex<TranspositionalTable>>,
         qsearch_depth : usize
     
     ) -> EvalResult{
         // const NODES_PER_FRAME : usize = 500;
         
-        if let Some(score) = transp.query(self.tabulation_hash(), depth){
+        if let Some(score) = transp.lock().unwrap().query(self.tabulation_hash(), depth){
             return EvalResult{score, nodes : 1}
         }
 
@@ -771,7 +789,7 @@ impl Position{
                             for ply in self.valid_moves(){
                                 let mut hc = self.clone();
                                 hc.apply_move(ply);
-                                moves_heuristic.push((ply,hc.eval_alphabeta(depth-2,alpha,beta,transp,qsearch_depth).score))
+                                moves_heuristic.push((ply,hc.eval_alphabeta(depth-2,alpha,beta,transp.clone(),qsearch_depth).score))
                             };
                             match self.to_play{
                                 Player::White => moves_heuristic.sort_by(|(_,s1),(_,s2)| s1.partial_cmp(&s2).unwrap().reverse()),
@@ -798,8 +816,8 @@ impl Position{
                         let sub_qsearch_depth = if nonquiescent {qsearch_depth+1} else {qsearch_depth};
                         
                         let sub_tabhash = copy.tabulation_hash();
-                        let sub_result = copy.eval_alphabeta(sub_depth, alpha, beta, transp, sub_qsearch_depth);
-                        transp.insert(sub_tabhash, sub_depth, sub_result.score);
+                        let sub_result = copy.eval_alphabeta(sub_depth, alpha, beta, transp.clone(), sub_qsearch_depth);
+                        transp.lock().unwrap().insert(sub_tabhash, sub_depth, sub_result.score);
 
                         let sub_score = sub_result.score.propagate();
                         nodes_count += sub_result.nodes;
@@ -838,7 +856,7 @@ impl Position{
         self.get_pieces(Player::White).clone().into_iter()
         .filter(|(_,species)|
             match species{
-                PieceType::Flat | PieceType::Stack(..) => true,
+                Species::Flat | Species::Stack(..) => true,
                 _ => false
             }
         )
@@ -873,7 +891,7 @@ pub struct MoveApplyReport{
     has_captured : bool
 }
 
-struct TranspositionalTable(HashMap<u64, (usize,Score)>);
+pub struct TranspositionalTable(HashMap<u64, (usize,Score)>);
 
 impl TranspositionalTable{
     pub fn new()->Self{
@@ -934,10 +952,10 @@ pub struct HistoryEntry{
     pub state_before : Position,
     pub state_after : Position,
     pub ply : Ply,
-    pub moved_piece : PieceType,
+    pub moved_piece : Species,
 
     pub disambiguate : bool,
-    pub kills : Vec<(Tile,PieceType)>,
+    pub kills : Vec<(Tile,Species)>,
 
     pub captured_after : HashMap<Player,Captured>,
 }
@@ -952,13 +970,13 @@ impl Display for HistoryEntry{
 
         write!(f,"{}{}{}",
             match self.moved_piece{
-                PieceType::Flat => "F",
-                PieceType::Lone(tall) => match tall{
+                Species::Flat => "F",
+                Species::Lone(tall) => match tall{
                     Tall::Blind => "B",
                     Tall::Hand => "A",
                     Tall::Star => "S"
                 },
-                PieceType::Stack(..) => "?"
+                Species::Stack(..) => "?"
             },
 
             move_rep,
