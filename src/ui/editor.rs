@@ -1,6 +1,6 @@
 use std::iter::once;
 
-use crate::{assets::Assets, theme, Piece, Species, Player, Position, Tile};
+use crate::{assets::{get_assets_unchecked, Assets}, theme, Piece, Player, Position, Species, Tile};
 use macroquad::prelude::*;
 
 #[derive(Clone)]
@@ -11,10 +11,22 @@ pub struct PositionEditor{
 
 impl PositionEditor{
     pub fn setup() -> PositionEditor{
+        Self::from_state(Position::setup())
+    }
+
+    pub fn from_state(position : Position)->PositionEditor{
         PositionEditor{
-            state : Position::setup(),
+            state : position,
             selected_brush : None
         }
+    }
+
+    pub fn tabulation_hash(&self)->u64{
+        self.state.tabulation_hash()
+    }
+
+    pub fn set_position(&mut self, new_position : Position){
+        self.state = new_position;
     }
 
     fn process_palette_button(&mut self, position : Vec2, brush : Option<Piece>, camera : &Camera2D){
@@ -51,8 +63,9 @@ impl PositionEditor{
         
     }
 
-    pub fn process(&mut self, camera : &Camera2D, assets : &Assets){
+    pub fn process(&mut self, camera : &Camera2D){
         set_camera(camera);
+        let assets = get_assets_unchecked();
 
         
         draw_rectangle(-7.0, -8.0, 14.0, 16.0, theme::BG_COLOR);

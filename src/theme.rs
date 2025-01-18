@@ -54,6 +54,12 @@ pub fn set_theme(ui : &mut Ui){
             size: 20.0, 
             family: FontFamily::Proportional 
         });
+    ts.insert(
+        TextStyle::Monospace, 
+        FontId { 
+            size: 20.0, 
+            family: FontFamily::Monospace 
+        });
 
     let ws = &mut ui.visuals_mut().widgets;
 

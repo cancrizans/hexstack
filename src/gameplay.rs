@@ -28,30 +28,37 @@ pub enum GamerSpec{
     Decent,
     Sharp,
     Tough,
-    Beastly
+    GrandMaster,
+
+    Perfect{
+        depth : usize
+    }
 }
 
 impl GamerSpec{
-    pub fn name(&self) -> &str{
+    pub fn name(&self) -> String{
         self.texts().0
     }
-    pub fn description(&self) -> &str{
+    pub fn description(&self) -> String{
         self.texts().1
     }
 
-    pub fn texts(&self) -> (&str,&str){
+    pub fn texts(&self) -> (String,String){
         match self{
-            GamerSpec::Human => ("Human", "Human player."),
-            GamerSpec::Gibberish => ("Gibberish", "Random moves."),
-            GamerSpec::Noob => ("Noob", "Poor player."),
-            GamerSpec::Decent => ("Decent", "Solid player."),
-            GamerSpec::Sharp => ("Sharp", "Serious challenge."),
-            GamerSpec::Tough => ("Tough", "Very strong."),
-            GamerSpec::Beastly => ("Beastly", "Is it even beatable?")
+            GamerSpec::Human => ("Human".to_owned(), "Human player.".to_owned()),
+            GamerSpec::Gibberish => ("Gibberish".to_owned(), "Random moves.".to_owned()),
+            GamerSpec::Noob => ("Noob".to_owned(), "Poor player.".to_owned()),
+            GamerSpec::Decent => ("Decent".to_owned(), "Solid player.".to_owned()),
+            GamerSpec::Sharp => ("Sharp".to_owned(), "Serious challenge.".to_owned()),
+            GamerSpec::Tough => ("Tough".to_owned(), "Very strong.".to_owned()),
+            GamerSpec::GrandMaster => ("Grandmaster".to_owned(), "Unbelievable".to_owned()),
+
+            GamerSpec::Perfect { depth } => 
+                (format!("Beastly-{}",depth),format!("Perfect {}-plies",depth))
         }
     }
 
-    fn make(self, assets : &Assets, allow_takeback : bool) -> Box<dyn Gamer>{
+    fn make(self, allow_takeback : bool) -> Box<dyn Gamer>{
         match self{
             GamerSpec::Human => Human::new_boxed( allow_takeback),
             GamerSpec::Gibberish => Bot::new_boxed(0,0.0),
@@ -59,9 +66,13 @@ impl GamerSpec{
             GamerSpec::Decent => Bot::new_boxed(2, 0.2),
             GamerSpec::Sharp => Bot::new_boxed(3, 0.4),
             GamerSpec::Tough => Bot::new_boxed(5, 0.4),
-            GamerSpec::Beastly => Bot::new_boxed(5, 0.0)
+            GamerSpec::GrandMaster => Bot::new_boxed(6, 0.2),
+
+            GamerSpec::Perfect { depth } => Bot::new_boxed(depth, 0.0)
         }
     }
+
+    
 }
 
 #[derive(Clone)]
@@ -134,7 +145,7 @@ impl Gamer for Bot{
         self.last_used_depth = Some(depth);
 
         self.result_future = Some(start_coroutine(
-            state.moves_with_score(depth,true,Some(self.transposition_table.clone()))));
+            state.moves_with_score(depth,depth > 5,Some(self.transposition_table.clone()))));
     }
 
     fn poll_answer(&mut self) -> Option<Decision> {
@@ -408,7 +419,7 @@ impl GameApp{
         let assets = ASSETS.get().unwrap();
         
         let [gm0,gm1] = match_config.gamers.map(
-            |s|s.make(assets, match_config.allow_takeback));
+            |s|s.make( match_config.allow_takeback));
 
         
         gamers.insert(first_gamer_color, gm0);

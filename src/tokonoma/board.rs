@@ -3,7 +3,7 @@ use itertools::Itertools;
 use macroquad::prelude::*;
 use std::{fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
 use memoize::memoize;
-use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, Assets, ASSETS}};
+use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, Assets, CompositionMode, ASSETS}};
 
 
 
@@ -705,6 +705,23 @@ pub struct Piece{
 impl Piece{
     pub fn draw(&self, x : f32, y: f32,  scale: f32){
         
+        let pieceset = get_pieceset_unchecked();
+
+        match pieceset.composition_mode {
+            CompositionMode::ComposeOnFlat => {
+                match self.species{
+                    Species::Stack(tall) => {
+                        Piece{color:self.color, species : Species::Flat}.draw(x, y, scale);
+                        Piece{color:self.color, species : Species::Lone(tall)}.draw(x, y, scale);
+                        return;
+                    },
+                    _ => {},
+                }
+
+            }
+            CompositionMode::Precomposed => {},
+        }
+
         let sx_single = match self.species{
             Species::Flat => 0,
             Species::Lone(tall) | Species::Stack(tall) => match tall{
@@ -724,14 +741,17 @@ impl Piece{
             _ => 0
         };
 
-        let tile_size = 128.0;
-        let pieceset = get_pieceset_unchecked();
+        
+        
+        let tex = pieceset.tex;
+
+        let tile_size = tex.width() * 0.25;
         let world_size = pieceset.base_scale * scale;
 
         let sx = sx as f32;
         let sy = sy as f32;
         
-        draw_texture_ex(pieceset.tex, 
+        draw_texture_ex(tex, 
             x - world_size * 0.5, y - world_size * 0.5,
                 WHITE, DrawTextureParams{
             dest_size : Some(vec2(1.0, 1.0) * world_size),

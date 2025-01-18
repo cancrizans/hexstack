@@ -1,6 +1,7 @@
 pub mod editor;
 pub mod rulesheet;
 pub mod match_config;
+pub mod engine_eval;
 
 use macroquad::prelude::*;
 

@@ -9,6 +9,7 @@ use core::f32;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex};
+use std::usize;
 use std::{collections::HashMap, fmt::Display};
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use macroquad::prelude::*;
@@ -800,14 +801,24 @@ impl Position{
                     };
                     let mut value = Score::win_now(self.to_play.flip());
                     let mut nodes_count = 1;
-                    for m in sorted_moves {
+
+                    let lmr_cutoff = match depth{
+                        0..=2 => usize::MAX,
+                        3 => 3,
+                        4..=7 => 2,
+                        _ => 1
+                    };
+                    for (mindex,&m) in sorted_moves.iter().enumerate() {
                         let mut copy = self.clone();
                         let application_report = copy.apply_move(m);
+
+                    
+                        // quiescence
 
                         let nonquiescent = (qsearch_depth < Self::MAX_QSEARCH_DEPTH) 
                             & application_report.has_captured;
                         
-                        let sub_depth = if nonquiescent{
+                        let mut sub_depth = if nonquiescent{
                             depth
                         } else {
                             depth-1
@@ -815,6 +826,11 @@ impl Position{
 
                         let sub_qsearch_depth = if nonquiescent {qsearch_depth+1} else {qsearch_depth};
                         
+                        // LMR
+                        if mindex+1 >= lmr_cutoff{
+                            sub_depth -= 1;
+                        }
+
                         let sub_tabhash = copy.tabulation_hash();
                         let sub_result = copy.eval_alphabeta(sub_depth, alpha, beta, transp.clone(), sub_qsearch_depth);
                         transp.lock().unwrap().insert(sub_tabhash, sub_depth, sub_result.score);

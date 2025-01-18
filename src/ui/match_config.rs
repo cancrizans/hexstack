@@ -1,25 +1,26 @@
 use egui::{FontFamily, FontId, Margin, TextStyle};
 
-use super::editor::PositionEditor;
+use super::{editor::PositionEditor, engine_eval::EngineEvalUI};
 
 
 
-use crate::{assets::ASSETS, gameplay::{GamerSpec, MatchConfig}, theme::{self, set_theme}, Player, Tile};
+use crate::{assets::ASSETS, gameplay::{GamerSpec, MatchConfig}, theme::{self, set_theme}, Player, Position, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
 
-use crate::assets::Assets;
 use macroquad::prelude::*;
 
 pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchConfig{
-    let choices = [
+    let choices : Vec<GamerSpec> = [
         GamerSpec::Human,
         GamerSpec::Gibberish,
         GamerSpec::Noob,
         GamerSpec::Decent,
         GamerSpec::Sharp,
         GamerSpec::Tough,
-        GamerSpec::Beastly
-    ];
+        GamerSpec::GrandMaster
+        
+    ].into_iter().chain((5..=8).map(|depth|GamerSpec::Perfect { depth }))
+    .collect();
 
 
     let mut match_config = last_match_config.unwrap_or(MatchConfig{
@@ -34,7 +35,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
 
     let mut time : f32 = 0.0;
 
-
+    let mut open_engine_eval_ui : bool = false;
     loop {
         clear_background(theme::BG_COLOR);
 
@@ -86,7 +87,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 ui.horizontal(|ui|{
                     ui.set_min_width(400.0);
                     ui.set_max_width(400.0);
-                    match_config.gamers.iter_mut().enumerate().for_each(|(i,g)|{
+                    match_config.gamers.iter_mut().enumerate().for_each(|(gamer_idx,gamer_spec)|{
                     
                         ui.vertical(|ui|{
                             ui.set_min_width(200.0);
@@ -97,22 +98,35 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                             
         
                             
-                            egui::ComboBox::from_id_source(format!("player{}",i+1))
-                            .selected_text(format!("{}",g.name()))
+                            egui::ComboBox::from_id_source(format!("player{}",gamer_idx+1))
+                            .selected_text(format!("{}",gamer_spec.name()))
+                            .width(150.0)
                             .show_ui(ui,|ui|{
-                                choices.iter().for_each(|choice|{
-                                    ui.selectable_value(g, *choice, choice.name());
+                                // ui.spacing_mut().item_spacing.y = 30.0;
+                                choices.iter().for_each(|&gamer_option|{
+                                    let lbl = egui::SelectableLabel::new(*gamer_spec == gamer_option, 
+                                        egui::RichText::new(gamer_option.name())
+                                        .size(18.0)
+                                    );
+
+                                    let mut resp = ui.add(lbl);
+                                    if resp.clicked() && *gamer_spec!=gamer_option{
+                                        *gamer_spec = gamer_option;
+                                        resp.mark_changed();
+                                    };
+
+                                    
                                 });
                             });
 
         
-                            ui.label(g.description());
+                            ui.label(gamer_spec.description());
 
                             ui.add_space(20.0);
 
                             ui.label("Plays as:");
 
-                            match i{
+                            match gamer_idx{
                                 0 => {
                                     ui.radio_value(&mut match_config.gamer_one_color, None, "Random");
                                     ui.radio_value(&mut match_config.gamer_one_color, Some(Player::White), "White");
@@ -151,10 +165,15 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                             match_config.starting_position = Some(PositionEditor::setup())
                         }
                     }
+
+                    
                 });
+                if ui.button("Engine evaluation").clicked(){
+                    open_engine_eval_ui = true;
+                }
                 
 
-                ui.add_space(30.0);
+                ui.add_space(15.0);
                 
                 ui.separator();
 
@@ -183,6 +202,19 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
 
             });
         });
+
+        if open_engine_eval_ui{
+            let position = match_config.starting_position
+            .map(|pe|pe.get_state_clone())
+            .unwrap_or(Position::setup());
+
+            let evaled_state = EngineEvalUI::new(position).run().await;
+
+            match_config.starting_position = Some(
+                PositionEditor::from_state(evaled_state)
+            );
+            open_engine_eval_ui = false
+        }
 
         egui_macroquad::draw();
         if let Some(()) = break_out{
@@ -264,7 +296,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 zoom : vec2(screen_height()/screen_width(), -1.0) * 0.12,
                 ..Default::default()
             };
-            editor.process(editor_cam, assets);
+            editor.process(editor_cam);
         } else {
             let title_dest_size = vec2(assets.title.width()/assets.title.height(),1.0) * 1.2;
             draw_texture_ex(

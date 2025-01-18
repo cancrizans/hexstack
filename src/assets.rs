@@ -41,13 +41,21 @@ const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 
 pub enum PieceSet{
     Standard,
-    Minimal
+    Minimal,
+    Ornate
+}
+
+#[derive(Clone)]
+pub enum CompositionMode{
+    Precomposed,
+    ComposeOnFlat
 }
 
 #[derive(Clone)]
 pub struct PieceSetAsset{
     pub tex : Texture2D,
-    pub base_scale : f32
+    pub base_scale : f32,
+    pub composition_mode : CompositionMode
 }
 
 // for reasons unknown to me, impl Drop
@@ -68,10 +76,18 @@ impl PieceSetAsset{
             PieceSet::Standard => PieceSetAsset{
                 tex : load_texture("gfx/pieces_sm.png").await?,
                 base_scale : 1.7,
+                composition_mode : CompositionMode::Precomposed,
             },
             PieceSet::Minimal => PieceSetAsset{
                 tex : load_texture("gfx/pieces_minimal.png").await?,
-                base_scale : 1.3
+                base_scale : 1.3,
+                composition_mode : CompositionMode::Precomposed,
+            },
+
+            PieceSet::Ornate => PieceSetAsset{
+                tex : load_texture("gfx/pieces_ornate.png").await?,
+                base_scale : 2.2,
+                composition_mode : CompositionMode::ComposeOnFlat
             }
         };
         Ok(set)

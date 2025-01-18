@@ -1,4 +1,4 @@
-use crate::{assets::{Assets, ASSETS}, theme::{self, set_theme}};
+use crate::{assets::ASSETS, theme::{self, set_theme}};
 use egui::Margin;
 use macroquad::prelude::*;
 
