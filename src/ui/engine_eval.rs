@@ -163,11 +163,10 @@ impl EngineEvalUI{
             egui_macroquad::draw();
 
 
+            next_frame().await;
             if quit{
                 break;
             }
-
-            next_frame().await
         }
 
         self.editor.get_state_clone()

@@ -744,7 +744,7 @@ impl Position{
         let passed_flat_score = self.passed_flat_score(Player::White) 
             - self.passed_flat_score(Player::Black);
 
-        const TEMPO_BONUS : f32 = 0.5;
+        const TEMPO_BONUS : f32 = 0.0;
         let tempo_bonus_score = match self.to_play {
             Player::White => TEMPO_BONUS,
             Player::Black => - TEMPO_BONUS
