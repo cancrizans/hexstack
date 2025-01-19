@@ -7,6 +7,7 @@ cp index.html build/game/index.html
 cp gfx -r build/game/gfx
 cp diags -r build/game/diags
 cp audio -r build/game/audio
+cp mq_js_bundle -r build/game/mq_js_bundle
 cp target/wasm32-unknown-unknown/release/hexstack.wasm build/game/hexstack.wasm
 
 cp build/game/hexstack.wasm .

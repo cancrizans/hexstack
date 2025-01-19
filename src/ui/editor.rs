@@ -1,15 +1,25 @@
 use std::iter::once;
+use circular_buffer::CircularBuffer;
 
-use crate::{assets::{get_assets_unchecked, Assets}, theme, Piece, Player, Position, Species, Tile};
+use crate::{assets::{get_assets_unchecked, Assets}, theme, ui::MqUi, Piece, Player, Position, Species, Tile};
 use macroquad::prelude::*;
+
+use super::Button;
+
+const UNDO_HISTORY_SIZE : usize = 30;
 
 #[derive(Clone)]
 pub struct PositionEditor{
     state : Position,
     selected_brush : Option<Piece>,
+    undo_history : CircularBuffer::<UNDO_HISTORY_SIZE,Position>,
+
+    btn_undo : Button,
 }
 
 impl PositionEditor{
+    
+
     pub fn setup() -> PositionEditor{
         Self::from_state(Position::setup())
     }
@@ -17,7 +27,12 @@ impl PositionEditor{
     pub fn from_state(position : Position)->PositionEditor{
         PositionEditor{
             state : position,
-            selected_brush : None
+            selected_brush : None,
+            undo_history : CircularBuffer::new(),
+            btn_undo : Button::new(
+                get_assets_unchecked().btn_takeback, 
+                Rect::new(3.0,4.0,1.0,1.0),
+            "Undo".to_string())
         }
     }
 
@@ -25,7 +40,23 @@ impl PositionEditor{
         self.state.tabulation_hash()
     }
 
+    fn push_history(&mut self){
+        self.undo_history.push_back(self.state.clone());
+    }
+
+    fn can_undo(&self) -> bool{
+        !self.undo_history.is_empty()
+    }
+
+    fn undo(&mut self){
+        if let Some(previous) = self.undo_history.pop_back(){
+            self.state = previous;
+            
+        } 
+    }
+
     pub fn set_position(&mut self, new_position : Position){
+        self.push_history();
         self.state = new_position;
     }
 
@@ -83,6 +114,7 @@ impl PositionEditor{
             hover_tile.draw_highlight_outline(0.1,Color::from_hex(0x111111), false);
 
             if is_mouse_button_pressed(MouseButton::Left){
+                self.push_history();
                 self.state.paint(&hover_tile, self.selected_brush);
             }
         }
@@ -129,7 +161,15 @@ impl PositionEditor{
         });
 
         if is_highlighted_to_move & is_mouse_button_pressed(MouseButton::Left){
+            self.push_history();
             self.state.flip_to_move();
+        }
+
+        let mqui = MqUi::new(camera);
+        if self.can_undo(){
+            if self.btn_undo.process(&mqui){
+                self.undo();
+            }
         }
     }
 

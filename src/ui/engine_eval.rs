@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use crate::{assets::ASSETS, theme::{self, set_theme}, tokonoma::{Captured, EvalResult, HistoryEntry, TranspositionalTable}, Player, Ply, Position};
+use crate::{theme::{self, set_theme}, tokonoma::{Captured, EvalResult, HistoryEntry, TranspositionalTable}, Player, Ply, Position};
 use coroutines::stop_all_coroutines;
 use egui::Margin;
 use macroquad::prelude::*;
-use macroquad::experimental::coroutines::{start_coroutine,Coroutine,stop_coroutine};
+use macroquad::experimental::coroutines::{start_coroutine,Coroutine};
 
 use super::editor::PositionEditor;
 
@@ -23,8 +23,7 @@ pub struct EngineEvalUI{
 }
 
 impl EngineEvalUI{
-    pub fn new(start_position : Position)->EngineEvalUI{
-        let editor = PositionEditor::from_state(start_position);
+    pub fn new(editor : PositionEditor)->EngineEvalUI{
         let hash = editor.tabulation_hash();
         EngineEvalUI{
             editor ,
@@ -78,7 +77,7 @@ impl EngineEvalUI{
         self.editor.set_position(pos);
     }
 
-    pub async fn run(&mut self) -> Position{
+    pub async fn run(mut self) -> PositionEditor{
         let mut quit = false;
         self.recompute();
 
@@ -100,14 +99,10 @@ impl EngineEvalUI{
                 }
             }
 
-            self.editor.process(&Camera2D{
-                target : vec2(5.0,-1.5),
-                zoom : vec2(screen_height()/screen_width(), -1.0) * 0.135,
-                ..Default::default()
-            });
+            
 
             set_default_camera();
-
+            let mut hovered_move = None;
             egui_macroquad::ui(|egui_ctx|{
                 egui_ctx.set_pixels_per_point(screen_height() / 720.0);
                 egui_ctx.set_visuals(egui::Visuals::light());
@@ -143,16 +138,21 @@ impl EngineEvalUI{
 
 
                     let mut move_to_apply = None;
+                    
                     if let Some((last_depth,results)) = &self.results{
                         egui::ScrollArea::vertical().id_source("engine_evals").show(ui,|ui|{
                             ui.label(format!("Computed at {}-ply depth.",last_depth));
                             results.iter().for_each(|(ply,entry, eval_result)|{
-                                if ui.add(egui::Label::new(
+                                let lbl = ui.add(egui::Label::new(
                                     format!("{} {} [{}]", eval_result.score, entry, eval_result.nodes)
-                                ).sense(egui::Sense::click()))
-                                .clicked(){
+                                )
+                                .sense(egui::Sense::click().union(egui::Sense::hover() )));
+                                if lbl.clicked(){
                                     move_to_apply = Some(*ply);
                                 };
+                                if lbl.hovered(){
+                                    hovered_move = Some(*ply);
+                                }
                             }); 
                                 
                         });
@@ -162,6 +162,15 @@ impl EngineEvalUI{
             });
             egui_macroquad::draw();
 
+            self.editor.process(&Camera2D{
+                target : vec2(5.0,-1.5),
+                zoom : vec2(screen_height()/screen_width(), -1.0) * 0.135,
+                ..Default::default()
+            });
+            if let Some(ply) = hovered_move{
+                ply.draw(false)
+            }
+            
 
             next_frame().await;
             if quit{
@@ -169,6 +178,6 @@ impl EngineEvalUI{
             }
         }
 
-        self.editor.get_state_clone()
+        self.editor
     }
 }

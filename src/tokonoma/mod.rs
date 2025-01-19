@@ -421,8 +421,10 @@ impl Position{
         let mut state_after = state_before.clone();
         state_after.apply_move(ply);
 
+        let win = state_after.is_won();
+
         HistoryEntry{
-            ply, state_before, state_after, moved_piece, disambiguate, kills, captured_after
+            ply, state_before, state_after, moved_piece, disambiguate, kills, captured_after, win
         }
     }
 
@@ -974,6 +976,8 @@ pub struct HistoryEntry{
     pub kills : Vec<(Tile,Species)>,
 
     pub captured_after : HashMap<Player,Captured>,
+
+    pub win : Option<Player>
 }
 
 impl Display for HistoryEntry{
@@ -984,7 +988,7 @@ impl Display for HistoryEntry{
             format!("{}",self.ply.to_tile)
         };
 
-        write!(f,"{}{}{}",
+        write!(f,"{}{}{}{}",
             match self.moved_piece{
                 Species::Flat => "F",
                 Species::Lone(tall) => match tall{
@@ -997,7 +1001,9 @@ impl Display for HistoryEntry{
 
             move_rep,
 
-            (0..self.kills.len()).map(|_|'*').collect::<String>()
+            (0..self.kills.len()).map(|_|'*').collect::<String>(),
+
+            if self.win.is_some() {"#"} else {""}
         )
     }
 }

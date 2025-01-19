@@ -49,7 +49,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     // }));
 
     c.bench_function("eval", |b|b.iter(||{
-        black_box(block_on(state0.clone().moves_with_score(6, false)))
+        black_box(block_on(state0.clone().moves_with_score(6, false,None)))
     }));
 
     c.bench_function("eval heuristic", |b|b.iter(||{

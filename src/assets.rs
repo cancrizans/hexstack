@@ -235,13 +235,14 @@ impl Assets{
     }
 
     pub fn get_avatar(&self, player : Player, avatar_offset : usize) -> (Texture2D,Rect){
+        let tile_size = self.avatars.width() * 0.5;
         let avatar_src = Rect::new(
-            (128 * avatar_offset) as f32,
-            (128 * match player {
+            tile_size *(avatar_offset as f32),
+            tile_size * (match player {
                 Player::Black => 1,
                 Player::White => 0
             }) as f32,
-            128.0,128.0
+            tile_size,tile_size
         );
 
 

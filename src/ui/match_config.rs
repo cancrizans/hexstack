@@ -154,7 +154,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 ui.add_space(30.0);
 
                 ui.horizontal(|ui|{
-                    ui.checkbox(&mut match_config.allow_takeback, "Allow undo");
+                    
 
                     ui.add_space(10.0);
                     match match_config.starting_position{
@@ -164,13 +164,21 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                         None => if ui.button("Edit starting position").clicked(){
                             match_config.starting_position = Some(PositionEditor::setup())
                         }
-                    }
+                    };
+                    if ui.button("Engine evaluation").clicked(){
+                        open_engine_eval_ui = true;
+                    };
 
                     
                 });
-                if ui.button("Engine evaluation").clicked(){
-                    open_engine_eval_ui = true;
-                }
+
+                ui.horizontal(|ui|{
+                    ui.add_enabled(
+                        (match_config.gamers[0] == GamerSpec::Human) | (match_config.gamers[1] == GamerSpec::Human), 
+                        egui::Checkbox::new(&mut match_config.allow_takeback, "Allow taking back moves")
+                    );
+                });
+                
                 
 
                 ui.add_space(15.0);
@@ -203,18 +211,14 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
             });
         });
 
+
         if open_engine_eval_ui{
-            let position = match_config.starting_position
-            .map(|pe|pe.get_state_clone())
-            .unwrap_or(Position::setup());
-
-            let evaled_state = EngineEvalUI::new(position).run().await;
-
-            match_config.starting_position = Some(
-                PositionEditor::from_state(evaled_state)
-            );
+            let editor = match_config.starting_position.unwrap_or(PositionEditor::setup());
+            let evaled_state = EngineEvalUI::new(editor).run().await;
+            match_config.starting_position = Some(evaled_state);
             open_engine_eval_ui = false
         }
+
 
         egui_macroquad::draw();
         if let Some(()) = break_out{

@@ -18,6 +18,7 @@ impl<'a> MqUi<'a>{
     }
 }
 
+#[derive(Clone)]
 pub struct Button{
     img : Texture2D,
     alpha : f32,
