@@ -1,10 +1,10 @@
 use egui::{FontFamily, FontId, Margin, TextStyle};
 
-use super::{editor::PositionEditor, engine_eval::EngineEvalUI};
+use super::{editor::PositionEditor, engine_eval::EngineEvalUI, theme_config};
 
 
 
-use crate::{assets::ASSETS, gameplay::{GamerSpec, MatchConfig}, theme::{self, set_theme}, Player, Position, Tile};
+use crate::{ assets::get_assets_unchecked, gameplay::{GamerSpec, MatchConfig}, theme::{self, egui_ctx_setup, set_theme}, Player, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
 
 use macroquad::prelude::*;
@@ -36,6 +36,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
     let mut time : f32 = 0.0;
 
     let mut open_engine_eval_ui : bool = false;
+    let mut open_theming_ui : bool = false;
     loop {
         clear_background(theme::BG_COLOR);
 
@@ -57,14 +58,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
         draw_rectangle(screen_width()*0.55, 0.0, screen_width()*0.5, screen_height(), panel_col);
 
         egui_macroquad::ui(|egui_ctx|{
-
-            egui_ctx.set_pixels_per_point(screen_height() / 720.0);
-
-            egui_ctx.set_visuals(egui::Visuals::light());
-
-            
-            
-
+            egui_ctx_setup(egui_ctx);
             egui::SidePanel::right(egui::Id::new("match_ui"))
             .frame(
                 egui::Frame::none()
@@ -125,20 +119,33 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                             ui.add_space(20.0);
 
                             ui.label("Plays as:");
+                            
+                            fn fpc_to_str(v : Option<Player>) -> &'static str{
+                                match v{
+                                    None => "Random",
+                                    Some(Player::White) => "White",
+                                    Some(Player::Black) => "Black"
+                                }
+                            }
 
                             match gamer_idx{
                                 0 => {
-                                    ui.radio_value(&mut match_config.gamer_one_color, None, "Random");
-                                    ui.radio_value(&mut match_config.gamer_one_color, Some(Player::White), "White");
-                                    ui.radio_value(&mut match_config.gamer_one_color, Some(Player::Black), "Black");
+                                    egui::ComboBox::from_id_source("playsas")
+                                    .selected_text(fpc_to_str(match_config.gamer_one_color))
+                                    .width(150.0)
+                                    .show_ui(ui,|ui|{
+                                        // ui.spacing_mut().item_spacing.y = 30.0;
+                                        for sval in [None,Some(Player::White),Some(Player::Black)]{
+                                            ui.selectable_value(
+                                                &mut match_config.gamer_one_color, 
+                                                sval, 
+                                                egui::RichText::new(fpc_to_str(sval))
+                                            );
+                                        };
+                                    });
                                 },
                                 1 => {
-                                    ui.label(if let Some(p1_col) = match_config.gamer_one_color {
-                                        match p1_col.flip() {
-                                            Player::Black => "Black",
-                                            Player::White => "White"
-                                        }
-                                    } else {"Random"});
+                                    ui.label(fpc_to_str(match_config.gamer_one_color.map(|p|p.flip())));
                                 },
                                 _ => unreachable!("Player past index 1")
                             }
@@ -178,6 +185,14 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                         egui::Checkbox::new(&mut match_config.allow_takeback, "Allow taking back moves")
                     );
                 });
+
+                ui.separator();
+
+                ui.add_space(15.0);
+                
+                if ui.button("Themes and colors...").clicked(){
+                    open_theming_ui = true;
+                };
                 
                 
 
@@ -212,6 +227,8 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
         });
 
 
+        egui_macroquad::draw();
+        
         if open_engine_eval_ui{
             let editor = match_config.starting_position.unwrap_or(PositionEditor::setup());
             let evaled_state = EngineEvalUI::new(editor).run().await;
@@ -219,8 +236,12 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
             open_engine_eval_ui = false
         }
 
+        if open_theming_ui{
+            theme_config::theme_panel().await;
+            open_theming_ui = false;
+        }
 
-        egui_macroquad::draw();
+        
         if let Some(()) = break_out{
             break;
         }
@@ -232,7 +253,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
         };
         set_camera(match_ui_cam);
 
-        let assets = ASSETS.get().unwrap();
+        let assets = get_assets_unchecked();
 
         for pid in [0,1]{
             let x = 0.55 + (pid as f32)*0.6;

@@ -39,10 +39,20 @@ impl RandomClip{
 
 const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 
+#[derive(Clone, Copy,PartialEq, Eq)]
 pub enum PieceSet{
     Standard,
     Minimal,
     Ornate
+}
+impl PieceSet{
+    pub fn name(&self)->&'static str{
+        match self{
+            Self::Standard => "Standard",
+            Self::Minimal => "Minimal",
+            Self::Ornate => "Ornate"
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -94,6 +104,7 @@ impl PieceSetAsset{
     }
 }
 
+use crate::theme::egui_ctx_setup;
 use crate::{theme, Player};
 
 pub struct Assets{
@@ -135,8 +146,7 @@ impl Assets{
                             set_default_camera();
                             
                             egui_macroquad::ui(|egui_ctx|{
-                                egui_ctx.set_pixels_per_point(screen_height() / 720.0);
-                                egui_ctx.set_visuals(egui::Visuals::light());
+                                egui_ctx_setup(egui_ctx);
                                 egui::CentralPanel::default()
                                 .show(egui_ctx, |ui|{
                                     ui.label(
@@ -257,9 +267,14 @@ impl Assets{
 
 
 lazy_static! {
-    pub static ref ASSETS : OnceLock<Assets> = OnceLock::new();
+    static ref ASSETS : OnceLock<Assets> = OnceLock::new();
 
-    pub static ref PIECESET : Arc<RwLock<Option<PieceSetAsset>>> = Arc::new(RwLock::new(None));
+    static ref PIECESET : Arc<RwLock<Option<PieceSetAsset>>> = Arc::new(RwLock::new(None));
+}
+
+pub async fn load_assets(){
+    let assets : Assets = Assets::loading_screen().await;
+    ASSETS.get_or_init(||assets);
 }
 
 pub fn get_pieceset() -> Option<PieceSetAsset>{
@@ -269,10 +284,10 @@ pub fn get_pieceset_unchecked() -> PieceSetAsset{
     get_pieceset().unwrap()
 }
 pub async fn set_pieceset(set : PieceSet) -> Result<(),FileError>{
-    if let Some(..) = get_pieceset(){
-        println!("Invalidating old pieceset tex.");
-        PIECESET.write().unwrap().as_mut().unwrap().tex.delete();
-    }
+    // if let Some(..) = get_pieceset(){
+    //     println!("Invalidating old pieceset tex.");
+    //     PIECESET.write().unwrap().as_mut().unwrap().tex.delete();
+    // }
 
     let psa = PieceSetAsset::load(set).await?;
     println!("Loaded standard pieceset.");
@@ -300,6 +315,7 @@ pub struct Asset<T> where T:Content + 'static + Debug{
     path : &'static str
 }
 
+#[allow(dead_code)]
 impl<T> Asset<T> where T:Content + Debug{
     fn load(path : &'static str) -> Asset<T>{
         Asset{

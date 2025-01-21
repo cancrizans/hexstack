@@ -1,5 +1,8 @@
 pub mod board;
+use bitboards::DoubleCounterBitset;
 pub use board::*;
+pub mod bitboards;
+pub use bitboards::{BitSet,PieceMap};
 
 pub mod matches;
 pub use matches::*;
@@ -17,6 +20,8 @@ use ::rand::seq::SliceRandom;
 
 use crate::arrows;
 
+use lazy_static::lazy_static;
+
 
 
 #[derive(Copy,Clone, PartialEq, PartialOrd, Debug)]
@@ -28,12 +33,28 @@ impl Score{
     const FINITE_THRESHOLD : f32 = 500.0;
     const WIN_BASELINE : f32 = 1000.0;
 
-    const EVEN : Score = Score(0.0);
+    pub const EVEN : Score = Score(0.0);
+
+    /// arithmetic mean scores 
+    /// (only makes sense for finite)
+    pub fn mean(values : Vec<Score>) -> Score{
+        let n = values.len();
+        Score::finite(values.into_iter().map(|v|v.0).sum::<f32>()/(n as f32))
+    }
 
     /// construct a finite score from a "small" float.
     fn finite(val : f32) -> Score{
         assert!(val.abs() < Self::FINITE_THRESHOLD);
         Score(val)
+    }
+
+    pub fn add(self, shift : f32) -> Score{
+        assert!(shift.abs() < Self::FINITE_THRESHOLD * 0.5);
+        if self.is_finite(){
+            Score::finite(self.0 + shift)
+        } else {
+            self
+        }
     }
 
     /// construct a score that represents an immediate victory.
@@ -107,29 +128,23 @@ impl EvalResult{
 
 
 
-#[derive(Clone,Debug, PartialEq, Eq)]
+#[derive(Clone,Debug, PartialEq, Eq, Hash)]
 /// A game position.
+/// It derives hash but it's not necessarily what we use for tabulation hashes
 pub struct Position{
     to_play : Player,
-    pieces : [PieceMap;2],
+    pieces : PlayerMap<PieceMap>,
 }
-
 
 impl Position{
     /// Reference to a player's pieces.
     #[inline]
     pub fn get_pieces(&self, color : Player) -> &PieceMap{
-        match color{
-            Player::White => &self.pieces[0],
-            Player::Black => &self.pieces[1]
-        }
+        &self.pieces[color]
     }
     #[inline]
     fn get_pieces_mut(&mut self, color : Player) -> &mut PieceMap{
-        match color{
-            Player::White => &mut self.pieces[0],
-            Player::Black => &mut self.pieces[1]
-        }
+        &mut self.pieces[color]
     }
 
   
@@ -143,35 +158,7 @@ impl Position{
     }
 
     pub fn setup()->Position{
-        
-        let mut white_pieces = PieceMap::EMPTY;
-        let mut black_pieces = PieceMap::EMPTY;
-
-        let sbr = BOARD_RADIUS as i8;
-
-
-        [
-            (0,sbr, Species::Stack(Tall::Hand)),
-            (1,sbr-1, Species::Stack(Tall::Star)),
-            (0,sbr-1, Species::Stack(Tall::Blind)),
-            (-1,sbr, Species::Stack(Tall::Blind)),
-
-            (2,sbr-2, Species::Stack(Tall::Hand)),
-            (-2,sbr, Species::Flat),
-
-        ].into_iter().for_each(|(x,y, species)|{
-            let z = -x-y;
-            let t = Tile::from_xyz(x, y, z).unwrap();
-            black_pieces.set(t, species);
-
-            white_pieces.set(t.antipode(), species);
-
-        });
-
-        
-        let pieces = [white_pieces,black_pieces];
-
-        Position {  to_play: Player::White, pieces }
+        STANDARD_SETUP.clone()
     }
 
     pub fn draw_attacks(&self, flip_board : bool, alpha:f32){
@@ -386,7 +373,7 @@ impl Position{
         }
     }
 
-    pub fn compute_history_entry(&self, ply : Ply, captured_before : HashMap<Player,Captured>) -> HistoryEntry{
+    pub fn compute_history_entry(&self, ply : Ply, captured_before : PlayerMap<Captured>) -> HistoryEntry{
         let state_before = self.clone();
         let active = state_before.to_play();
 
@@ -405,7 +392,7 @@ impl Position{
         let mut captured_after = captured_before;
 
         
-        captured_after.get_mut(&active).unwrap().extend(killmap.into_iter().map(|(_,species)|species));
+        captured_after[active].extend(killmap.into_iter().map(|(_,species)|species));
 
         let disambiguate = match moves.iter().filter(|&av|{
             (av.to_tile == ply.to_tile) & 
@@ -440,9 +427,9 @@ impl Position{
     // }
 
     pub fn clear_tile(&mut self, location : &Tile){
-        // not hash safe!
-        let _ = self.pieces[0].clear_tile(*location);
-        let _ = self.pieces[1].clear_tile(*location);
+        // not zobrist hash safe!
+        let _ = self.pieces[Player::White].clear_tile(*location);
+        let _ = self.pieces[Player::Black].clear_tile(*location);
     }
 
     #[inline]
@@ -905,6 +892,39 @@ impl Position{
     }
 }
 
+lazy_static! {
+    static ref STANDARD_SETUP : Position = {
+        let mut white_pieces = PieceMap::EMPTY;
+        let mut black_pieces = PieceMap::EMPTY;
+
+        let sbr = BOARD_RADIUS as i8;
+
+
+        [
+            (0,sbr, Species::Stack(Tall::Hand)),
+            (1,sbr-1, Species::Stack(Tall::Star)),
+            (0,sbr-1, Species::Stack(Tall::Blind)),
+            (-1,sbr, Species::Stack(Tall::Blind)),
+
+            (2,sbr-2, Species::Stack(Tall::Hand)),
+            (-2,sbr, Species::Flat),
+
+        ].into_iter().for_each(|(x,y, species)|{
+            let z = -x-y;
+            let t = Tile::from_xyz(x, y, z).unwrap();
+            black_pieces.set(t, species);
+
+            white_pieces.set(t.antipode(), species);
+
+        });
+
+        
+        let pieces = PlayerMap::new(white_pieces,black_pieces);
+
+        Position {  to_play: Player::White, pieces }
+    };
+}
+
 pub struct MoveApplyReport{
     has_captured : bool
 }
@@ -975,7 +995,7 @@ pub struct HistoryEntry{
     pub disambiguate : bool,
     pub kills : Vec<(Tile,Species)>,
 
-    pub captured_after : HashMap<Player,Captured>,
+    pub captured_after : PlayerMap<Captured>,
 
     pub win : Option<Player>
 }

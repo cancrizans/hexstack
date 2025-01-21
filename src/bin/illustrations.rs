@@ -1,7 +1,7 @@
 
 
-use hexstack::assets::ASSETS;
-use hexstack::{arrows::draw_arrow, assets::Assets, neighbours_attack, theme, Piece, Player, Position, Tall, Tile};
+use hexstack::assets::load_assets;
+use hexstack::{arrows::draw_arrow, neighbours_attack, theme, Piece, Player, Position, Tall, Tile};
 use hexstack::Species;
 use macroquad::prelude::*;
 
@@ -54,8 +54,7 @@ async fn main(){
     const FULL_BOARD_SH : (u32,u32) = (420,300);
     const FULL_BOARD_ZOOM : f32 = 0.22;
 
-    let assets = Assets::load().await.unwrap();
-    ASSETS.get_or_init(||assets);
+    load_assets().await;
 
     let i = Illustration::new(
         FULL_BOARD_ZOOM, "board".to_string(), FULL_BOARD_SH, Vec2::ZERO);

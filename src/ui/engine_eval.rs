@@ -1,6 +1,6 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::sync::{Arc, Mutex};
 
-use crate::{theme::{self, set_theme}, tokonoma::{Captured, EvalResult, HistoryEntry, TranspositionalTable}, Player, Ply, Position};
+use crate::{theme::{self, egui_ctx_setup, set_theme}, tokonoma::{Captured, EvalResult, HistoryEntry, PlayerMap, TranspositionalTable}, Ply, Position};
 use coroutines::stop_all_coroutines;
 use egui::Margin;
 use macroquad::prelude::*;
@@ -47,7 +47,7 @@ impl EngineEvalUI{
 
     async fn the_job(position : Position, depth : usize, transp : Arc<Mutex<TranspositionalTable>>) -> (usize, EngineResults){
         let mquad_frame_await = depth > 5;
-        let dummy_captures = HashMap::from([(Player::White,Captured::empty()),(Player::Black,Captured::empty())]);
+        let dummy_captures = PlayerMap::twin(Captured::empty());
 
         let results : EngineResults = position.clone()
         .moves_with_score(depth, mquad_frame_await, Some(transp))
@@ -104,8 +104,7 @@ impl EngineEvalUI{
             set_default_camera();
             let mut hovered_move = None;
             egui_macroquad::ui(|egui_ctx|{
-                egui_ctx.set_pixels_per_point(screen_height() / 720.0);
-                egui_ctx.set_visuals(egui::Visuals::light());
+                egui_ctx_setup(egui_ctx);
                 egui::SidePanel::right(egui::Id::new("engine_eval"))
                 .frame(
                     egui::Frame::none()

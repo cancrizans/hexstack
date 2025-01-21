@@ -1,39 +1,20 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
-use std::{fmt::Display, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not}};
+use core::num;
+use std::{fmt::Display, ops::{Index, IndexMut}, str::FromStr};
 use memoize::memoize;
-use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, Assets, CompositionMode, ASSETS}};
-
+use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, CompositionMode}, theme::get_board_palette};
+use super::bitboards::BitSet;
 
 
 pub const BOARD_RADIUS : i8 = 3;
 const BOARD_SHORT_RADIUS : i8 = 2;
 
-const BOARD_SIZE : usize = 29;
+pub const BOARD_SIZE : usize = 29;
+pub const ROW_OFFSET : u8 = 12;
 
-const ROW_OFFSET : u8 = 12;
-const BOARD_BITS : [u8;BOARD_SIZE] = {
-    let mut bits = [0;29];
 
-    let mut i = 0;
-    let mut x = 0;
-    while x < 5 {
-        let mut y = 0;
-        while y < 7 {
-            let z = -5+(x as i32)+(y as i32);
-            if (z >= -3) & (z<=3) {
-                bits[i] = ROW_OFFSET * x + y;
-                i+=1;
-            
-            }
-            y+=1;
-        }
-        x+=1;
-    }
-    
-    bits
-};
 // #[inline]
 // const fn tile_to_bit(tile : &Tile) -> u8{
 //     tile.uy() + tile.ux() * Self::ROW_OFFSET
@@ -54,6 +35,16 @@ impl Tile{
     
     const OFF_Y : i8 = BOARD_RADIUS;
     const OFF_X : i8 = BOARD_SHORT_RADIUS;
+
+    #[inline]
+    pub const fn to_bit(&self) -> u8{
+        self.0
+    }
+
+    #[inline]
+    pub const fn from_bit_unchecked(bit : u8) -> Tile{
+        Tile(bit)
+    }
 
     #[inline]
     pub const fn new(value : u8) -> Option<Tile>{
@@ -127,7 +118,7 @@ impl Tile{
     }
 
     #[inline]
-    const fn ux(&self) -> u8{
+    pub const fn ux(&self) -> u8{
         // self.0 & 0xF
         self.0 / ROW_OFFSET
     }
@@ -138,7 +129,7 @@ impl Tile{
     }
 
     #[inline]
-    const fn uy(&self) -> u8{
+    pub const fn uy(&self) -> u8{
         // self.0 >> 4
         self.0 % ROW_OFFSET
     }
@@ -348,19 +339,42 @@ impl Tile{
     }
 
     fn tile_color(&self) -> Color{
-        match self.mod3(){
-            0 => Color::from_hex(0xbbbbbb),
-            1 => Color::from_hex(0x999999),
-            2 => Color::from_hex(0xdddddd),
+        get_board_palette().sample(self.mod3())
+    }
+
+    const fn is_border(&self) -> bool{
+        let (ux,uy) = (self.ux(),self.uy());
+
+        match ux{
+            0|4 => true,
+            1  => (uy == 6) | (uy == 1),
+            2 => (uy==6) | (uy == 0),
+            3 => (uy==5) | (uy == 0),
             _ => unreachable!()
         }
     }
 
     pub fn draw_board(flip_board : bool){
+        const DARK_TILE : Tile = Tile::from_xyz_unchecked(0, -1, 1);
+        const LIGHT_TILE : Tile = Tile::from_xyz_unchecked(0, 1, -1);
+        let dark_color = DARK_TILE.tile_color();
+        let light_color = LIGHT_TILE.tile_color();
+        
+
+        
+        Self::all_tiles().filter(|t|t.is_border())
+        .for_each(|t|{
+            let (x,y) = t.to_world(flip_board);
+            draw_hexagon(x, y, 
+                1.1, 
+                0.0,//0.05, 
+                true,
+                Color::from_hex(0x111111),
+                dark_color);
+        });
 
         Self::all_tiles().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
-
             let tile_color = t.tile_color();
 
             draw_hexagon(x, y, 
@@ -371,14 +385,15 @@ impl Tile{
                 tile_color);
         });
 
+        
+
         for player in [Player::Black,Player::White]{
             let (x,y) = Tile::corner(player).to_world(flip_board);
 
-            const DARK_TILE : Tile = Tile::from_xyz_unchecked(0, -1, 1);
-            const LIGHT_TILE : Tile = Tile::from_xyz_unchecked(0, 1, -1);
+            
             let col = match player{
-                Player::Black => DARK_TILE.tile_color(),
-                Player::White => LIGHT_TILE.tile_color(),
+                Player::Black => dark_color,
+                Player::White => light_color,
             };
 
             draw_hexagon(x, y, 
@@ -391,7 +406,7 @@ impl Tile{
     }
 
     pub fn draw_tile_numbers( flip_board : bool){
-        let font = ASSETS.get().unwrap().font;
+        let font = get_assets_unchecked().font;
         Self::all_tiles().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
             let (x,y) = (x,y+0.4);
@@ -432,6 +447,9 @@ impl Tile{
 
     
 }
+
+
+
 
 
 #[memoize]
@@ -521,21 +539,6 @@ impl Delta{
 }
 
 
-#[allow(dead_code)]
-pub const fn coord_to_char(v : i8) -> char{
-    match v{
-        -3 => 'α',
-        -2 => 'β',
-        -1 => 'γ',
-        0 => 'δ',
-        1 => 'ε',
-        2 => 'ζ',
-        3 => 'η',
-        _ => 'X'
-    }
-}
-
-
 impl Display for Tile{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 
@@ -557,6 +560,34 @@ impl Display for Tile{
         };
 
         write!(f,"{}{}",row_name,tile_nr)
+    }
+}
+#[derive(Debug)]
+pub struct TileParseError;
+impl FromStr for Tile{
+    type Err = TileParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 2 {return Err(TileParseError)};
+        let mut chars = s.chars();
+        let (letter,number) = (chars.next().unwrap(),chars.next().unwrap());
+
+        let row = match letter{
+            'a' => -2, 'b' => -1, 'c' => 0, 'd' => 1, 'e' => 2,
+            _ => {return Err(TileParseError)}
+        };
+        let x : i8 = row;
+
+        let tile_nr = number.to_digit(10).ok_or(TileParseError)? as i8;
+
+        let y = match row{
+            -2..=0 => 4,
+            1 => 3,
+            2 => 2,
+            _ => unreachable!()
+        } - tile_nr;
+
+        Ok(Tile::from_xyz_unchecked(x, y, -x-y))
+        
     }
 }
 
@@ -586,6 +617,83 @@ impl Player{
         } 
     }
 }
+
+#[derive(Clone,Debug, PartialEq, Eq, Hash)]
+pub struct PlayerMap<T>{
+    white : T,
+    black : T,
+}
+impl <T> Index<Player> for PlayerMap<T>{
+    type Output = T;
+    #[inline]
+    fn index(&self, index: Player) -> &Self::Output {
+        match index{
+            Player::White => &self.white,
+            Player::Black => &self.black
+        }
+    }
+}
+impl <T> IndexMut<Player> for PlayerMap<T>{
+    #[inline]
+    fn index_mut(&mut self, index: Player) -> &mut Self::Output {
+        match index{
+            Player::White => &mut self.white,
+            Player::Black => &mut self.black,
+        }
+    }
+}
+impl<T> PlayerMap<T> where T : Clone{
+    pub fn twin(value : T) -> PlayerMap<T>{
+        PlayerMap { white: value.clone(), black: value }
+    }
+}
+impl<T> PlayerMap<T>{
+    pub fn new(white : T, black : T) -> PlayerMap<T>{
+        PlayerMap{white,black}
+    }
+    pub fn new_on_player(first_player : Player, first_value : T, other_value : T) -> Self{
+        match first_player{
+            Player::White => Self::new(first_value,other_value),
+            Player::Black => Self::new(other_value,first_value),
+        }
+    }
+}
+
+pub struct PlayerMapIntoIterator<'a,T>{
+    map : &'a PlayerMap<T>,
+    player : Option<Player>
+}
+
+impl<'a, T> Iterator for PlayerMapIntoIterator<'a, T>{
+    type Item = (Player,&'a T);
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.player{
+            Some(Player::White) => {
+                self.player = Some(Player::Black);
+                Some((Player::White,&self.map[Player::White]))
+            },
+            Some(Player::Black) => {
+                self.player = None;
+                Some((Player::Black,&self.map[Player::Black]))
+            },
+            None => {
+                None
+            }
+        }
+    }
+}   
+impl<'a, T> IntoIterator for &'a PlayerMap<T>{
+    type Item = (Player,&'a T);
+    type IntoIter = PlayerMapIntoIterator<'a,T>;
+    fn into_iter(self) -> Self::IntoIter {
+        PlayerMapIntoIterator{
+            map : self,
+            player : Some(Player::White)
+        }
+    }
+}
+
+
 
 #[derive(Clone, Copy,Debug,Hash,PartialEq, Eq)]
 pub enum Tall{
@@ -811,6 +919,29 @@ impl Display for Ply{
     }
 }
 
+#[derive(Debug)]
+pub enum PlyParseError{
+    Tile(TileParseError),
+    Other,
+}
+impl From<TileParseError> for PlyParseError{
+    fn from(value: TileParseError) -> Self {
+        PlyParseError::Tile(value)
+    }
+}
+impl FromStr for Ply{
+    type Err = PlyParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() != 4 {return Err(PlyParseError::Other)};
+        let (from,to) = (&s[0..2],&s[2..4]);
+        
+        Ok(Ply{
+            from_tile : Tile::from_str(from)?,
+            to_tile : Tile::from_str(to)?
+        })
+    }
+}
+
 
 
 
@@ -870,428 +1001,7 @@ impl Captured{
     }
 }
 
-#[derive(Copy,Clone,PartialEq, Eq,Hash, Debug)]
-pub struct BitSet(u64);
 
-impl BitSet{
-    pub const fn new()->BitSet{
-        BitSet(0)
-    }
-
-    #[inline]
-    pub const fn count(&self) -> u32{
-        self.0.count_ones()
-    }
-
-    #[inline]
-    const fn tile_to_bit(tile : &Tile) -> u8{
-        tile.0
-    }
-    #[inline]
-    const fn bit_to_tile(bit : u8) -> Tile{
-        Tile(bit)
-    }
-
-    #[inline]
-    pub const fn tile_mask(tile : &Tile) -> BitSet{
-        BitSet(1<<Self::tile_to_bit(tile))
-    }
-
-    #[inline]
-    pub const fn intersection(self, other : BitSet) -> BitSet{
-        BitSet(self.0 & other.0)
-    }
-
-    #[inline]
-    pub const fn union(self, other : BitSet) -> BitSet{
-        BitSet(self.0 | other.0)
-    }
-
-    pub fn set(&mut self, location : &Tile){
-        *self |= Self::tile_mask(location)
-    }
-
-    pub fn get(&self, location : &Tile) -> bool{
-        (*self & Self::tile_mask(location)).is_not_empty()
-    }
-
-    pub const fn get_at_bit(&self, bit : u8) -> bool{
-        match bit{
-            0..64 => (self.0 & (1<<bit))>0,
-            _ => false
-        }
-    }
-
-    pub fn unset(&mut self, location : &Tile){
-        *self &= !Self::tile_mask(location)
-    }
-
-    pub fn set_mask_bool(&mut self, flag : bool, mask : BitSet){
-        if flag{
-            *self |= mask
-        } else {
-            *self &= !mask
-        }
-    }
-
-    pub fn remove(&mut self, location : &Tile) -> bool{
-        let mask = Self::tile_mask(location);
-        let removed = self.0 & mask.0 > 0;
-        *self &= !mask;
-        removed
-    }
-
-    
-
-    const BOARD_MASK : BitSet = {
-        let mut mask = BitSet::new();
-
-        let mut i = 0;
-        while i < 29{
-            let bit = BOARD_BITS[i];
-            mask.0 |= 1<<bit;
-            i+=1;
-        }
-
-        mask
-    };
-
-    pub fn into_iter(self) -> impl Iterator<Item = Tile>{
-        BOARD_BITS.into_iter().flat_map(move |bit|{
-            if self.0 & (1<<bit) > 0{
-                Some(Self::bit_to_tile(bit))
-            } else {None}
-        })
-    }
-
-    pub fn is_not_empty(&self) -> bool{
-        self.0 > 0
-    }
-
-    pub fn generate_move_destinations(&self, color : Player, species : Species) -> BitSet{
-        const M : i32 = ROW_OFFSET as i32;
-
-        let shifts = match species {
-            Species::Flat => [1,M,-M+1].iter(),
-            Species::Lone(tall) 
-            | Species::Stack(tall)
-            => match tall{
-                Tall::Hand => [2,-M,M-1,-1].iter(),
-                Tall::Blind => [2*M,-2*M+2,-M,M-1,-2].iter(),
-                Tall::Star => [-2*M+1,2*M-1,M+1,-M-1, M-2,-M+2].iter()
-            }
-        };
-
-        let mut buffer = BitSet::new();
-        for &shift in shifts{
-            let signed_shift = match color{
-                Player::White => -shift,
-                Player::Black => shift
-            };
-
-            let shifted = if signed_shift > 0{
-                self.0 >> signed_shift
-            } else {
-                self.0 << -signed_shift
-            };
-
-            buffer.0 |= shifted;
-        };
-
-        buffer & Self::BOARD_MASK
-    }
-    pub fn move_destinations_from_tile(from_tile : Tile,color : Player, species : Species) -> BitSet{
-        Self::tile_mask(&from_tile).generate_move_destinations(color, species)
-    }
-
-}
-
-impl BitOr for BitSet{
-    type Output = BitSet;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        self.union(rhs)
-    }
-}
-impl BitAnd for BitSet{
-    type Output = BitSet;
-    fn bitand(self, rhs: Self) -> Self::Output {
-        self.intersection(rhs)
-    }
-}
-impl Not for BitSet{
-    type Output = BitSet;
-    fn not(self) -> Self::Output {
-        BitSet(!self.0)
-    }
-}
-impl BitAndAssign for BitSet{
-    fn bitand_assign(&mut self, rhs: Self) {
-        *self = *self & rhs
-    }
-}
-impl BitOrAssign for BitSet{
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = *self | rhs
-    }
-}
-
-pub struct DoubleCounterBitset{
-    bitplane1 : BitSet,
-    bitplane0 : BitSet
-}
-
-impl DoubleCounterBitset{
-    pub fn new()->Self{
-        Self{bitplane0:BitSet::new(),bitplane1:BitSet::new()}
-    }
-    pub fn add(&mut self, mask : BitSet){
-        let carry = self.bitplane0 & mask;
-        self.bitplane1 |= carry;
-        self.bitplane0 |= mask;
-    }
-    pub fn get_doubles(&self)->BitSet{
-        self.bitplane1
-    }
-}
-
-
-#[derive(Clone, Hash, Debug, PartialEq, Eq)]
-pub struct PieceMap{
-    flats : BitSet,
-    talls : [BitSet; 2]
-}
-
-impl PieceMap{
-    pub const EMPTY : PieceMap = PieceMap{
-        flats : BitSet::new(),
-        talls : [BitSet::new(), BitSet::new()]
-    };
-
-    pub fn occupied(&self) -> BitSet{
-        self.flats | self.talls[0] | self.talls[1]
-    }
-
-    pub fn count(&self) -> u32{
-        self.occupied().count()
-    }
-
-    pub fn locate_lone_flats(&self) -> BitSet{
-        self.flats & !(self.talls[0] | self.talls[1])
-    }
-
-    pub fn viable_tall_destinations(&self) -> BitSet{
-        !(self.talls[0] | self.talls[1])
-    }
-
-
-    pub fn into_iter(self) -> impl Iterator<Item = (Tile,Species)>{
-        
-        BOARD_BITS.into_iter().flat_map(move |bit|{
-            let (flat,tall0,tall1) = (
-                self.flats.get_at_bit(bit),
-                self.talls[0].get_at_bit(bit),
-                self.talls[1].get_at_bit(bit)
-            );
-            Self::decode_species(flat, tall0, tall1)
-            .map(|sp|(BitSet::bit_to_tile(bit),sp))
-            
-        })
-    }
-
-    #[inline]
-    const fn encode_species(species : Species) -> (bool,bool,bool){
-        let flat = match species{
-            Species::Flat | Species::Stack(..) => true,
-            Species::Lone(..) => false
-        };
-
-        let (t0,t1) = match species{
-            Species::Flat => (false, false),
-            Species::Lone(tall) | Species::Stack(tall) => 
-            Self::encode_tall(tall)
-        };
-
-        (flat,t0,t1)
-    }
-
-    #[inline]
-    const fn decode_tall(tall0 : bool, tall1 : bool) -> Option<Tall>{
-        match (tall0,tall1){
-            (false,false) => None,
-            (false,true) => Some(Tall::Hand),
-            (true,false) => Some(Tall::Blind),
-            (true, true ) =>Some( Tall::Star)
-        }
-    }
-
-    #[inline]
-    const fn encode_tall(tall : Tall) -> (bool, bool){
-        match tall{
-            Tall::Hand => (false,true),
-            Tall::Blind => (true, false),
-            Tall::Star => (true, true)
-        }
-    }
-
-    #[inline]
-    const fn decode_species(flat : bool, tall0 : bool, tall1 : bool) -> Option<Species>{
-        let tall = Self::decode_tall(tall0, tall1);
-        if flat{
-            if let Some(tall) = tall{
-                Some(Species::Stack(tall))
-            } else {
-                Some(Species::Flat)
-            }
-        } else {
-            if let Some(tall) = tall{
-                Some(Species::Lone(tall))
-            } else {
-                None
-            }
-        }
-    }
-
-    pub fn set(&mut self, location : Tile, species : Species){
-        let (sf, st0, st1) = Self::encode_species(species);
-
-        let mask = BitSet::tile_mask(&location);
-
-        self.flats.set_mask_bool(sf, mask);
-        self.talls[0].set_mask_bool(st0, mask);
-        self.talls[1].set_mask_bool(st1, mask);
-    }
-
-    pub fn contains_key(&self, key : &Tile) -> bool{
-        let mask = BitSet::tile_mask(key);
-        (self.occupied() & mask).is_not_empty()
-    }
-
-    #[inline]
-    pub fn locate_talls(&self, tall : Tall) -> BitSet{
-        let (tall0,tall1) = Self::encode_tall(tall);
-
-        match (tall0,tall1){
-            (true,true) => self.talls[0] & self.talls[1],
-            (true,false) => self.talls[0] & !self.talls[1],
-            (false,true) => !self.talls[0] & self.talls[1],
-
-            (false,false) => unreachable!()
-        }
-    }
-
-
-    pub fn locate_species(&self, species : Species) -> BitSet{
-        // Note: this is maybe inefficient because
-        // it is called twice for lones and stacks.
-
-        match species{
-            Species::Flat => self.locate_lone_flats(),
-            Species::Lone(tall) => {
-                self.locate_talls(tall) & !self.flats
-            },
-            Species::Stack(tall) => {
-                self.locate_talls(tall) & self.flats
-            }
-        }
-
-    }
-    
-
-    pub fn pull_moving_piece(&mut self, location : Tile) -> Species{
-        let mask = BitSet::tile_mask(&location);
-        let orig_flat = (self.flats & mask).is_not_empty();
-
-        let orig_tall_bits = self.talls.map(|bf|(bf & mask).is_not_empty());
-
-        let orig_tall = Self::decode_tall(orig_tall_bits[0], orig_tall_bits[1]);
-
-        if orig_flat{
-            if let Some(tall) = orig_tall{
-                self.talls[0].set_mask_bool(false,mask);
-                self.talls[1].set_mask_bool(false,mask);
-                Species::Lone(tall) 
-            } else {
-                self.flats.set_mask_bool(false, mask);
-                Species::Flat
-            }
-        } else {
-            if let Some(tall) = orig_tall{
-                self.talls[0].set_mask_bool(false,mask);
-                self.talls[1].set_mask_bool(false,mask);
-                Species::Lone(tall)
-            } else {
-                unreachable!()
-            }
-        }
-    }
-
-    pub fn mask(&self, mask : BitSet) -> Self{
-        PieceMap {
-            flats : self.flats & mask,
-            talls : [
-                self.talls[0] & mask,
-                self.talls[1] & mask
-            ]
-        }
-    }
-
-    pub fn kill(&mut self, mask : BitSet) -> PieceMap{
-        let kills_masked = self.mask(mask);
-
-        *self = self.mask(!mask);
-
-        kills_masked
-    }
-
-    pub fn is_not_empty(&self) -> bool{
-        self.flats.is_not_empty() | self.talls[0].is_not_empty() | self.talls[1].is_not_empty()
-    }
-
-    pub fn toss(&mut self, location : Tile, piece : Species){
-        let mask = BitSet::tile_mask(&location);
-
-        let flat = (self.flats & mask).is_not_empty();
-
-        match piece{
-            Species::Flat => {
-                assert!(!flat);
-                self.flats.set_mask_bool(true, mask);
-                
-            },
-            Species::Lone(tall) => {
-                let (tall0, tall1) = Self::encode_tall(tall);
-                self.talls[0].set_mask_bool(tall0, mask);
-                self.talls[1].set_mask_bool(tall1, mask);
-                
-            },
-            Species::Stack(..) => unreachable!()
-        
-        };
-
-    }
-
-    #[inline]
-    pub fn get(&self, location : Tile) -> Option<Species>{
-        let mask = BitSet::tile_mask(&location);
-        let (flat,tall0,tall1) = (
-            (self.flats & mask).is_not_empty(),
-            (self.talls[0] & mask).is_not_empty(),
-            (self.talls[1] & mask).is_not_empty()
-        );
-
-        Self::decode_species(flat, tall0, tall1)
-
-    }
-
-    pub fn clear_tile(&mut self, tile : Tile){
-        let mask = !BitSet::tile_mask(&tile);
-
-        self.flats &= mask;
-        self.talls[0] &= mask;
-        self.talls[1] &= mask;
-    }
-
-}
 
 
 
@@ -1315,6 +1025,15 @@ mod tests{
                 }
             })
         );
+
+        Tile::all_tiles().for_each(|t|{
+            
+            let parsed = Tile::from_str(&format!("{}",t))
+            .expect("Tile parse error");
+            assert_eq!(t,parsed);
+            
+
+        });
         
     }
 
@@ -1399,41 +1118,5 @@ mod tests{
         });
     }
 
-    #[test]
-    fn test_bitsets(){
-        (-2..=2).cartesian_product(-3..=3)
-        .for_each(|(x,y)|{
-            let tile_xyz = Tile::from_xyz(x, y, -x-y);
 
-            if let Some(tile_xyz) = tile_xyz{
-                let bit = BitSet::tile_to_bit(&tile_xyz);
-                if !BOARD_BITS.contains(&bit){
-                    panic!("tile {} ({}/{}) maps to bit {} which is invalid.", 
-                    tile_xyz,
-                    tile_xyz.ux(),
-                    tile_xyz.uy(),
-                    bit)
-                };
-            }
-        });
-
-        BOARD_BITS.iter().for_each(|b|{
-            let nasty = BitSet::bit_to_tile(*b);
-
-            assert!(Tile::from_xyz(nasty.x(), nasty.y(), nasty.z()).is_some())
-        });
-    }
-
-    #[test]
-    fn test_piecemaps(){
-        // let pmap = PieceMap::EMPTY;
-
-        [
-            Tall::Blind, Tall::Star, Tall::Hand
-        ].into_iter().for_each(|t|{
-            let (a,b) = PieceMap::encode_tall(t);
-            let t2 = PieceMap::decode_tall(a,b).unwrap();
-            assert_eq!(t,t2);
-        });
-    }
 }

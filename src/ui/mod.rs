@@ -2,11 +2,11 @@ pub mod editor;
 pub mod rulesheet;
 pub mod match_config;
 pub mod engine_eval;
+pub mod theme_config;
 
 use macroquad::prelude::*;
 
-use crate::assets::{Assets, ASSETS};
-
+use crate::assets::get_assets_unchecked;
 
 pub struct MqUi<'a>{
     pub camera : &'a Camera2D
@@ -58,7 +58,7 @@ impl Button{
                 ..Default::default()
             });
 
-        let font = ASSETS.get().unwrap().font;
+        let font = get_assets_unchecked().font;
 
         if self.alpha > 0.001{
             let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.55);

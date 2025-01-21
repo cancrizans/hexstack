@@ -1,4 +1,4 @@
-use crate::{assets::ASSETS, theme::{self, set_theme}};
+use crate::{assets::get_assets_unchecked, theme::{self, egui_ctx_setup, set_theme}};
 use egui::Margin;
 use macroquad::prelude::*;
 
@@ -89,8 +89,7 @@ pub async fn read_rulesheet(){
         let page = &PAGES[page_num];
 
         egui_macroquad::ui(|egui_ctx|{
-            egui_ctx.set_pixels_per_point(screen_height() / 720.0);
-            egui_ctx.set_visuals(egui::Visuals::light());
+            egui_ctx_setup(egui_ctx);
             egui::SidePanel::right(egui::Id::new("rulesheet"))
             .frame(
                 egui::Frame::none()
@@ -148,7 +147,7 @@ pub async fn read_rulesheet(){
         });
 
         let n_diags = page.diags.len();
-        let assets = ASSETS.get().unwrap();
+        let assets = get_assets_unchecked();
         for (i,diag_name) in page.diags.iter().enumerate(){
             let diag = *assets.diagrams.get(diag_name).unwrap();
 

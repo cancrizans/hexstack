@@ -1,8 +1,9 @@
-use std::{collections::HashMap, fmt::Display, sync::{Arc, Mutex}};
+use std::{fmt::Display, iter::repeat_n, sync::{Arc, Mutex}};
 
 use futures::executor::block_on;
 
-use hexstack::tokonoma::{Captured, Player, Position, TranspositionalTable};
+use hexstack::{tokonoma::{Captured, Player, PlayerMap, Position, Score, TranspositionalTable}, Ply};
+use itertools::Itertools;
 
 // const OPENING_DEPTH : usize = 2;
 const SAMPLES : usize = 100;
@@ -69,30 +70,107 @@ fn simulate(starting_state : Position) -> SimResults{
     results
 }
 
+#[allow(dead_code)]
+fn expand_node(args : (Vec<Ply>, Position)) -> Vec<(Vec<Ply>,Position)>{
+    let (moves_hist,pos) = args;
+    pos.valid_moves().into_iter().map(|ply|{
+        let mut copy = pos.clone();
+        copy.apply_move(ply);
+
+        let mut hist = moves_hist.clone();
+        hist.push(ply);
+
+        (hist,copy)
+    }).collect()
+}
+
+
+const OPENING_DEPTH : usize = 2;
+const SEARCH_DEPTH : usize = 9;
+
+fn print_section_report(position : Position, current_depth : usize, transp : Arc<Mutex<TranspositionalTable>>) -> String{
+    let res = block_on(position.clone().moves_with_score(SEARCH_DEPTH+OPENING_DEPTH-current_depth, false, Some(transp.clone())));
+
+    //let mean_score = Score::mean(res.iter().map(|(_,ev)|ev.score).collect());
+    let top_score = res.first().map_or(Score::EVEN,
+        |(_,er)|er.score
+    );
+    let threshold = top_score.add( - 0.5);
+
+    res.into_iter()
+    .filter(|(_,er)|er.score >= threshold)
+    .map(|(ply,er)|{
+        let sub_depth = current_depth+1;
+        let inner = if sub_depth < OPENING_DEPTH {
+            let mut copy = position.clone();
+            copy.apply_move(ply);
+            Some(print_section_report(copy, sub_depth, transp.clone()))
+        } else {
+            None
+        };
+        let he = position.compute_history_entry(ply,PlayerMap::twin(Captured::empty()));
+
+        format!("{}{}\t{}\t[{}]{}",
+            repeat_n('\t',current_depth).join(""),
+            he,
+            er.score, er.nodes,
+            inner.map_or("".to_string(), |i|format!("\n{}",i))
+        )
+    }).join("\n")
+
+}
+
+
 fn main(){
+    
+    // let expanded_tree : Vec<(Vec<Ply>, Position)> = expand_node((vec![], Position::setup()))
+    //     .into_iter()
+    //     .flat_map(expand_node)
+    //     .collect();
+    // let sequences_len = expanded_tree.len();
+
+    // let mut expanded_positions = HashMap::new();
+
+    // for (hist,pos) in expanded_tree{
+    //     match expanded_positions.entry(pos){
+    //         Entry::Vacant(vacancy) => {vacancy.insert(hist);},
+    //         Entry::Occupied(..) => {}
+    //     }
+    // };
+
+    // println!("{} distinct positions from 2 plies. ({} sequences)", expanded_positions.len(), sequences_len);
+
+    // expanded_positions.iter().for_each(|(p,h)|{
+    //     println!("{} {}", p.tabulation_hash(), h.iter().map(|v|format!("{}",v)).join(" "));
+    // });
+
+
     let table = Arc::new(Mutex::new(TranspositionalTable::new()));
     let state0 = Position::setup();
-    let caps = HashMap::from_iter([Player::White,Player::Black].map(|p|(p,Captured::empty())));
 
-    for first_move in state0.valid_moves(){
-        let mut copy = state0.clone();
-        let hentry = copy.compute_history_entry(first_move,caps.clone());
+    println!("{}", print_section_report(state0, 0, table))
 
-        println!("1. {} ...", hentry);
+    // let caps = HashMap::from_iter([Player::White,Player::Black].map(|p|(p,Captured::empty())));
 
-        copy.apply_move(first_move);
+    // for first_move in state0.valid_moves(){
+    //     let mut copy = state0.clone();
+    //     let hentry = copy.compute_history_entry(first_move,caps.clone());
+
+    //     println!("1. {} ...", hentry);
+
+    //     copy.apply_move(first_move);
         
-        let los_evaluatos = block_on(
-            copy.clone().moves_with_score(9, false, Some(table.clone())));
+    //     let los_evaluatos = block_on(
+    //         copy.clone().moves_with_score(9, false, Some(table.clone())));
 
-        for (response, eval) in los_evaluatos{
-            let hentry2 = copy.compute_history_entry(response,caps.clone());
-            println!("1. {} {} -- {}",hentry,hentry2,eval.score);
-        }
+    //     for (response, eval) in los_evaluatos{
+    //         let hentry2 = copy.compute_history_entry(response,caps.clone());
+    //         println!("1. {} {} -- {}",hentry,hentry2,eval.score);
+    //     }
 
         
 
 
-    }
+    // }
 
 }

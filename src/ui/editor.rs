@@ -1,7 +1,7 @@
 use std::iter::once;
 use circular_buffer::CircularBuffer;
 
-use crate::{assets::{get_assets_unchecked, Assets}, theme, ui::MqUi, Piece, Player, Position, Species, Tile};
+use crate::{assets::get_assets_unchecked, theme, ui::MqUi, Piece, Player, Position, Species, Tile};
 use macroquad::prelude::*;
 
 use super::Button;

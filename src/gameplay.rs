@@ -1,10 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use crate::assets::{get_assets_unchecked, Assets, ASSETS};
+use crate::assets::get_assets_unchecked;
+use crate::theme::egui_ctx_setup;
 use crate::tokonoma::{board::Piece, EvalResult, Position};
 
-use crate::tokonoma::{MatchState, TranspositionalTable};
+use crate::tokonoma::{HalfOpeningDetectionError, MatchState, PlayerMap, TranspositionalTable};
 
 use crate::{theme::set_theme, ui::{editor::PositionEditor, rulesheet::read_rulesheet}};
 use crate::ui::{Button, MqUi};
@@ -194,7 +195,7 @@ impl Human{
             available_moves : None,
             answer : None,
             
-            btn_takeback : make_takeback_button(ASSETS.get().unwrap()),
+            btn_takeback : make_takeback_button(),
 
             allow_takeback,
 
@@ -243,8 +244,6 @@ impl Gamer for Human{
     }
 
     fn process(&mut self, ui : &MqUi, as_player : Player) {
-        let assets = get_assets_unchecked();
-
         if let Some(av_moves) = &self.available_moves{
             if self.allow_takeback{
                 if self.btn_takeback.process(&ui){
@@ -361,7 +360,7 @@ struct GameApp{
     
 
 
-    gamers : HashMap<Player, Box<dyn Gamer>>,
+    gamers : PlayerMap<Box<dyn Gamer>>,
 
     last_touched_tiles : Option<[Tile;2]>,
     last_kill_tiles : Vec<Tile>,
@@ -388,9 +387,9 @@ struct GameApp{
     
 }
 
-fn make_takeback_button(assets : &Assets) -> Button{
+fn make_takeback_button() -> Button{
     Button::new(
-        assets.btn_takeback,
+        get_assets_unchecked().btn_takeback,
         Rect::new(6.5,1.0,1.0,1.0),
         "Undo Move".to_string()
     )
@@ -404,7 +403,7 @@ impl GameApp{
         
 
 
-        let mut gamers :HashMap<Player, Box<dyn Gamer>> = HashMap::new();
+        
         
         let first_gamer_color = if let Some(color) = match_config.gamer_one_color{
             color
@@ -416,20 +415,15 @@ impl GameApp{
             }
         };
         
-        let assets = ASSETS.get().unwrap();
+        let assets = get_assets_unchecked();
         
         let [gm0,gm1] = match_config.gamers.map(
             |s|s.make( match_config.allow_takeback));
 
-        
-        gamers.insert(first_gamer_color, gm0);
-        gamers.insert(first_gamer_color.flip(), gm1);
+    
+        let gamers = PlayerMap::new_on_player(first_gamer_color, gm0, gm1);
 
-
-            // (Player::White, Box::new(Bot::new(3))),
-            // (Player::Black, Box::new(Human::new()))
-            // ]);
-
+    
         let starting_position = match_config.starting_position
             .map(|ed|ed.get_state_clone())
             .unwrap_or(Position::setup());
@@ -451,7 +445,7 @@ impl GameApp{
 
             smoothed_to_play : 0.5,
 
-            btn_mate_takeback : make_takeback_button(assets),
+            btn_mate_takeback : make_takeback_button(),
             btn_tile_letters : Button::new(
                 assets.btn_letters,
                 Rect::new(6.5,2.0,1.0,1.0),
@@ -484,7 +478,7 @@ impl GameApp{
     }
     
     fn ask(&mut self){
-        self.gamers.get_mut(&self.match_state.to_play()).unwrap().assign_puzzle(
+        self.gamers[self.match_state.to_play()].assign_puzzle(
             self.match_state.state_clone()
         );
         self.app_state = GameStateMachine::Polling;
@@ -497,7 +491,7 @@ impl GameApp{
 
         self.last_kill_tiles = vec![];
 
-        ASSETS.get().unwrap().piece_slide.play();
+        get_assets_unchecked().piece_slide.play();
         self.app_state = GameStateMachine::Animating(MoveAnimState::new(ply,self.match_state.state_clone()));
 
         self.match_state.apply_move(ply);
@@ -508,7 +502,7 @@ impl GameApp{
     }
 
     fn undo_until_human(&mut self){
-        if self.gamers.get_mut(&self.match_state.to_play().flip()).unwrap().allows_takebacks(){
+        if self.gamers[self.match_state.to_play().flip()].allows_takebacks(){
             self.undo_moves(1);
         }
         else {
@@ -562,8 +556,7 @@ impl GameApp{
 
         // History panel
         egui_macroquad::ui(|egui_ctx| {
-            egui_ctx.set_visuals(egui::Visuals::light());
-            egui_ctx.set_pixels_per_point(screen_height() / 720.0);
+            egui_ctx_setup(egui_ctx);
             egui::SidePanel::new(egui::panel::Side::Left,Id::new("game_panel"))
             .frame(egui::Frame{
                 fill: Color32::TRANSPARENT,
@@ -612,10 +605,46 @@ impl GameApp{
                 .max_width(300.0)
                 .id_source("history")
                 .show(ui,|ui|{
-                    ui.set_max_width(150.0);
-                    ui.set_min_width(150.0);
+                    ui.set_max_width(250.0);
+                    ui.set_min_width(250.0);
                     
                     ui.vertical(|ui|{
+
+
+                        {
+                            use Player as P;
+                            use HalfOpeningDetectionError as HODE;
+                            let opening_text = 
+                            match [P::White,P::Black].map(|p|self.match_state.half_opening(p)){
+                                [Err(HODE::NonStandardSetup), _] => "[Non-standard setup]",
+                                [Err(HODE::NotEnoughMoves),_] => "...",
+                                [Ok(..),Err(HODE::NonStandardSetup)] => unreachable!(),
+                                [Ok(whop),Err(HODE::NotEnoughMoves)]
+                                  =>  &format!("{} v. ...",whop.map(|h|h.name()).unwrap_or("[Irregular]")),
+                                [Ok(whop),Ok(bhop)] => {
+                                    match [whop,bhop] {
+                                        [None,None] => "[Irregular]",
+                                        _ => {
+                                            let [wfmt,bfmt] = [whop,bhop]
+                                            .map(|hop|
+                                                hop.map(|h|h.name())
+                                                .unwrap_or("[Irregular]")
+                                            );
+                                            if wfmt == bfmt{
+                                                &format!("Twin {}",wfmt)
+                                            } else {
+                                                &format!("{} v. {}",wfmt,bfmt)
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+                            ui.label(egui::RichText::new(
+                                opening_text
+                            ).strong()
+                            );
+                        }
+
                         self.match_state.history().iter().enumerate().chunks(2)
                         .into_iter().enumerate().for_each(|(i,plies)|{
                             let move_num = i+1;
@@ -681,7 +710,7 @@ impl GameApp{
                 } else {
                     self.match_state.refresh();
                     if let Some(winner) = self.match_state.is_won(){
-                        play_sound_once(ASSETS.get().unwrap().mate);
+                        play_sound_once(get_assets_unchecked().mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
                         self.ask();
@@ -693,7 +722,7 @@ impl GameApp{
 
                 } else {
                     let to_move = self.match_state.to_play();
-                    let gamer = self.gamers.get_mut(&to_move).unwrap();
+                    let gamer = &mut self.gamers[to_move];
         
                     match gamer.poll_answer() {
                         None => {
@@ -721,13 +750,13 @@ impl GameApp{
 
                     
                     self.last_kill_tiles = anim_state.kills.iter().map(|(t,_)|*t).collect();
-
+                    let assets = get_assets_unchecked();
                     if let Some(winner) = self.match_state.is_won(){
-                        play_sound_once(ASSETS.get().unwrap().mate);
+                        play_sound_once(assets.mate);
                         self.app_state = GameStateMachine::Won { winner }
                     } else {
                         if anim_state.kills.len()>0{
-                            play_sound(ASSETS.get().unwrap().capture,PlaySoundParams{
+                            play_sound(assets.capture,PlaySoundParams{
                                 looped : false, volume : 0.5
                             });
                         }
@@ -846,7 +875,7 @@ impl GameApp{
                 self.match_state.to_play(),
                 self.match_state.to_play().flip()
             ]{
-            let gamer = self.gamers.get_mut(&player).unwrap();
+            let gamer = &mut self.gamers[player];
             gamer.process(&mqui,player);
 
 
@@ -866,7 +895,7 @@ impl GameApp{
             let size = vec2(2.0,2.0).lerp(vec2(3.0,3.0), strength);
             let pos = player.ui_info_pos() - size*0.5;
 
-            let (avatar_tex,avatar_src) = ASSETS.get().unwrap().get_avatar(player, gamer.avatar_offset());
+            let (avatar_tex,avatar_src) = get_assets_unchecked().get_avatar(player, gamer.avatar_offset());
 
             draw_texture_ex(
                 avatar_tex, 
@@ -911,7 +940,7 @@ impl GameApp{
 
             GameStateMachine::Won { winner } => {
                 let loser = winner.flip();
-                let loser = self.gamers.get(&loser).unwrap();
+                let loser = &self.gamers[loser];
 
                 if loser.allows_takebacks() {
                     if self.btn_mate_takeback.process(&mqui){
