@@ -19,7 +19,7 @@ multiset = "0.0.5"
 indicatif = "0.17.9"
 nonmax = "0.5.5"
 circular-buffer = "0.1.9"
-image = "0.25.5"
+image = {version = "0.25.5", default-features = false, features = ["png"]}
 
 [build-dependencies]
 itertools = "0.13.0"
