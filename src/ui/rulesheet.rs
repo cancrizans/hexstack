@@ -1,4 +1,4 @@
-use crate::{assets::get_assets_unchecked, theme::{self, egui_ctx_setup, set_theme}};
+use crate::{assets::{get_assets_unchecked, mipmaps::set_cam}, theme::{self, egui_ctx_setup, set_theme}};
 use egui::Margin;
 use macroquad::prelude::*;
 
@@ -140,11 +140,8 @@ pub async fn read_rulesheet(){
         });
         egui_macroquad::draw();
 
-        set_camera(&Camera2D{
-            zoom: 1.0*vec2(screen_height()/screen_width(), -1.0),
-            target : Vec2::ZERO,
-            ..Default::default()
-        });
+        
+        set_cam(1.0,Vec2::ZERO);
 
         let n_diags = page.diags.len();
         let assets = get_assets_unchecked();

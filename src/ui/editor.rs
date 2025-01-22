@@ -1,7 +1,7 @@
 use std::iter::once;
 use circular_buffer::CircularBuffer;
 
-use crate::{assets::get_assets_unchecked, theme, ui::MqUi, Piece, Player, Position, Species, Tile};
+use crate::{assets::{get_assets_unchecked, mipmaps::set_cam_from_cam2d}, theme, ui::MqUi, Piece, Player, Position, Species, Tile};
 use macroquad::prelude::*;
 
 use super::Button;
@@ -95,7 +95,7 @@ impl PositionEditor{
     }
 
     pub fn process(&mut self, camera : &Camera2D){
-        set_camera(camera);
+        set_cam_from_cam2d(camera);
         let assets = get_assets_unchecked();
 
         

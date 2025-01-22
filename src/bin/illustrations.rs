@@ -22,6 +22,7 @@ impl Illustration{
             render_target : Some(tex),
             ..Default::default()
         });
+        
 
         Illustration { name, tex}
     } 

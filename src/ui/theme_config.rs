@@ -3,7 +3,7 @@ use egui::Margin;
 use macroquad::prelude::*;
 use ::rand::prelude::SliceRandom;
 
-use crate::{assets::PieceSet, theme::{color_to_color32, egui_ctx_setup, set_theme, BoardPalette, BoardPaletteConfig, BG_COLOR, BOARD_PALETTES, THEME_CONFIG}, Position, Tile};
+use crate::{assets::{mipmaps::set_cam, PieceSet}, theme::{color_to_color32, egui_ctx_setup, set_theme, BoardPalette, BoardPaletteConfig, BG_COLOR, BOARD_PALETTES, THEME_CONFIG}, Position, Tile};
 
 
 
@@ -24,11 +24,7 @@ pub async fn theme_panel(){
         let mut done = false;
         clear_background(BG_COLOR);
 
-        set_camera(&Camera2D{
-            zoom : 0.2 * vec2(screen_height()/screen_width(), -1.0),
-            target : vec2(-2.0,0.0),
-            ..Default::default()
-        });
+        set_cam(0.2,vec2(-2.0,0.0));
         Tile::draw_board(false);
         random_position.draw(false, false, false);
 

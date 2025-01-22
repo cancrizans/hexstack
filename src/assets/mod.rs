@@ -1,13 +1,14 @@
 use std::future::Future;
 use std::fmt::Debug;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::{collections::HashMap, sync::OnceLock};
-
+pub mod mipmaps;
 
 use macroquad::experimental::coroutines::{Coroutine,start_coroutine};
 
 
 use macroquad::{audio::{load_sound, play_sound, PlaySoundParams, Sound}, prelude::*};
+use mipmaps::{load_mipmapped_texture, set_cam, MipMappedTexture2D};
 use ::rand::seq::SliceRandom;
 
 use lazy_static::lazy_static;
@@ -20,6 +21,7 @@ impl RandomClip{
     async fn load(paths : Vec<String>) -> Result<Self, FileError>{
         let mut clips = vec![];
         for path in paths{
+            ASSET_LOAD_LOG.write().unwrap().set_message(format!("Loading audio clip {}...",path));
             clips.push((path.clone(),load_sound(&path).await?));
         };
 
@@ -63,7 +65,7 @@ pub enum CompositionMode{
 
 #[derive(Clone)]
 pub struct PieceSetAsset{
-    pub tex : Texture2D,
+    pub tex : MipMappedTexture2D,
     pub base_scale : f32,
     pub composition_mode : CompositionMode
 }
@@ -84,18 +86,18 @@ impl PieceSetAsset{
     async fn load(spec : PieceSet) -> Result<PieceSetAsset,FileError>{
         let set = match spec{
             PieceSet::Standard => PieceSetAsset{
-                tex : load_texture("gfx/pieces_sm.png").await?,
+                tex : load_mipmapped_texture("gfx/pieces_sm.png").await?,
                 base_scale : 1.7,
                 composition_mode : CompositionMode::Precomposed,
             },
             PieceSet::Minimal => PieceSetAsset{
-                tex : load_texture("gfx/pieces_minimal.png").await?,
+                tex : load_mipmapped_texture("gfx/pieces_minimal.png").await?,
                 base_scale : 1.3,
                 composition_mode : CompositionMode::Precomposed,
             },
 
             PieceSet::Ornate => PieceSetAsset{
-                tex : load_texture("gfx/pieces_ornate.png").await?,
+                tex : load_mipmapped_texture("gfx/pieces_ornate.png").await?,
                 base_scale : 2.2,
                 composition_mode : CompositionMode::ComposeOnFlat
             }
@@ -113,7 +115,7 @@ pub struct Assets{
     pub btn_lines : Texture2D,
     pub btn_letters : Texture2D,
     pub btn_rules : Texture2D,
-    pub avatars : Texture2D,
+    pub avatars : MipMappedTexture2D,
     pub font : Font,
     pub font_bytes : Vec<u8>,
     pub title : Texture2D,
@@ -123,15 +125,42 @@ pub struct Assets{
     pub mate : Sound,
     pub capture:Sound,
 
-    pub diagrams : HashMap<&'static str, Texture2D>
+    pub diagrams : HashMap<&'static str, Texture2D>,
+
+    
 }
 
+
+struct AssetLoadLog{
+    message : String
+}
+
+
+impl AssetLoadLog{
+    fn message(&self)->String{
+        self.message.clone()
+    }
+    
+    fn new()->Self{
+        AssetLoadLog{message:String::new()}
+    }
+    fn set_message(&mut self, new_mess : String){
+        self.message = new_mess;
+    }
+}
+lazy_static!{
+    static ref ASSET_LOAD_LOG : Arc<RwLock<AssetLoadLog>> = Arc::new(RwLock::new(AssetLoadLog::new()));
+}
+
+
 impl Assets{
+
+    
 
     pub async fn loading_screen() -> Self{
         let load_co = start_coroutine(Assets::load());
         let mut time : f32 = 0.0;
-
+        
         
         loop {
             clear_background(theme::BG_COLOR);
@@ -161,11 +190,8 @@ impl Assets{
                 }
             }
 
-            set_camera(&Camera2D{
-                target: vec2(0.0,0.0),
-                zoom : 0.05*vec2(screen_height()/screen_width(),1.0),
-                ..Default::default()
-            });
+            
+            set_cam(0.05, Vec2::ZERO);
 
             let th = time * 2.0;
             
@@ -185,6 +211,9 @@ impl Assets{
                 draw_circle(center.x,center.y, s * 1.0,col);
             });
             
+            set_default_camera();
+            draw_text(&ASSET_LOAD_LOG.read().unwrap().message(), 600.0,500.0, 30.0,Color::from_hex(0x111111));
+            
 
             time += get_frame_time();
             next_frame().await
@@ -193,21 +222,30 @@ impl Assets{
     }
 
 
+    
     pub async fn load()->Result<Assets,FileError> {
+        fn set_message(new_mess : String){
+            ASSET_LOAD_LOG.write().unwrap().set_message(new_mess);
+        }
+
         // Pieceset is not stored in here,
         // but we still load the default so it's
         // slotted in the loading screen.
+        set_message("Loading pieceset...".to_string());
         set_pieceset(PieceSet::Standard).await?;
 
 
         // unwrap font error because I don't wanna cast
         // and I can't update mquad :(
+        set_message("Loading font...".to_string());
         let font = load_ttf_font(FONT_PATH).await.unwrap();
         font.set_filter(FilterMode::Linear);
 
         let font_bytes = macroquad::file::load_file(&FONT_PATH)
             .await?;
 
+        
+        set_message("Loading diagrams...".to_string());
         let mut diagrams = HashMap::new();
         for name in [
             "board",
@@ -220,31 +258,41 @@ impl Assets{
 
         ]{
             diagrams.insert(name, 
-                load_texture(&format!("diags/{}.png",name)).await?
+                    load_texture(&format!("diags/{}.png",name)).await?
             );
+        };
+
+        async fn tex(fname : &'static str) -> Result<Texture2D,FileError>{
+            let path = format!("gfx/{}",fname);
+            set_message(format!("Loading {}...",path));
+            load_texture(&path).await
+        }
+        async fn sound(fname : &'static str) -> Result<Sound,FileError>{
+            let path = format!("audio/{}",fname);
+            set_message(format!("Loading {}...",path));
+            load_sound(&path).await
         }
 
-
         Ok(Assets{
-            btn_takeback : load_texture("gfx/btn_takeback.png").await?,
-            btn_exit : load_texture("gfx/btn_exit.png").await?,
-            btn_lines : load_texture("gfx/btn_lines.png").await?,
-            btn_letters : load_texture("gfx/btn_letters.png").await?,
-            btn_rules : load_texture("gfx/btn_rules.png").await?,
-            avatars :  load_texture("gfx/avatars.png").await?,
+            btn_takeback : tex("btn_takeback.png").await?,
+            btn_exit : tex("btn_exit.png").await?,
+            btn_lines : tex("btn_lines.png").await?,
+            btn_letters : tex("btn_letters.png").await?,
+            btn_rules : tex("btn_rules.png").await? ,
+            avatars :  load_mipmapped_texture("gfx/avatars.png").await?,
             font ,
             font_bytes,
-            title : load_texture("gfx/title.png").await?,
+            title  : tex("title.png").await?,
 
             piece_slide : RandomClip::load([1,3,4,5,7,8].into_iter().map(|n|format!("audio/slide{}.ogg",n)).collect()).await?,
 
-            mate : load_sound("audio/mate.ogg").await?,
-            capture : load_sound("audio/bopp.ogg").await?,
+            mate : sound("mate.ogg").await?,
+            capture : sound("bopp.ogg").await?,
             diagrams,
         })
     }
 
-    pub fn get_avatar(&self, player : Player, avatar_offset : usize) -> (Texture2D,Rect){
+    pub fn get_avatar(&self, player : Player, avatar_offset : usize) -> (MipMappedTexture2D,Rect){
         let tile_size = self.avatars.width() * 0.5;
         let avatar_src = Rect::new(
             tile_size *(avatar_offset as f32),
@@ -256,7 +304,7 @@ impl Assets{
         );
 
 
-        (self.avatars,avatar_src)
+        (self.avatars.clone(),avatar_src)
     }
 
 

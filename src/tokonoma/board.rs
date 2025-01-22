@@ -325,8 +325,7 @@ impl Tile{
             Player::Black => 1.0
         };
 
-        draw_texture_ex(
-            tex,
+        tex.draw(
             x-R,
             y-R,
             WHITE, DrawTextureParams{
@@ -859,7 +858,8 @@ impl Piece{
         let sx = sx as f32;
         let sy = sy as f32;
         
-        draw_texture_ex(tex, 
+        
+        tex.draw(
             x - world_size * 0.5, y - world_size * 0.5,
                 WHITE, DrawTextureParams{
             dest_size : Some(vec2(1.0, 1.0) * world_size),

@@ -4,7 +4,7 @@ use super::{editor::PositionEditor, engine_eval::EngineEvalUI, theme_config};
 
 
 
-use crate::{ assets::get_assets_unchecked, gameplay::{GamerSpec, MatchConfig}, theme::{self, egui_ctx_setup, set_theme}, Player, Tile};
+use crate::{ assets::{get_assets_unchecked, mipmaps::set_cam}, gameplay::{GamerSpec, MatchConfig}, theme::{self, egui_ctx_setup, set_theme}, Player, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
 
 use macroquad::prelude::*;
@@ -246,12 +246,13 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
             break;
         }
 
-        let match_ui_cam = &Camera2D{
-            target:vec2(0.0,0.0),
-            zoom : vec2(screen_height()/screen_width(),-1.0),
-            ..Default::default()
-        };
-        set_camera(match_ui_cam);
+        // let match_ui_cam = &Camera2D{
+        //     target:vec2(0.0,0.0),
+        //     zoom : vec2(screen_height()/screen_width(),-1.0),
+        //     ..Default::default()
+        // };
+        let (match_ui_zoom, match_ui_target) = (1.0,Vec2::ZERO);
+        set_cam(match_ui_zoom,match_ui_target);
 
         let assets = get_assets_unchecked();
 
@@ -273,7 +274,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 av_offset);
 
             if let Some(..) = match_config.gamer_one_color{
-                draw_texture_ex(avatar_tex, 
+                avatar_tex.draw( 
                     x-size.x*0.5, 
                     y-size.y*0.5, 
                     WHITE, 
@@ -287,7 +288,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 half_sz.x *= 0.5;
                 let mut left_src = src;
                 left_src.w *= 0.5;
-                draw_texture_ex(avatar_tex, 
+                avatar_tex.draw(
                     x-size.x*0.5, 
                     y-size.y*0.5, 
                     WHITE, 
@@ -303,7 +304,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 right_src.w *= 0.5;
                 right_src.x += right_src.w;
 
-                draw_texture_ex(avatar_tex, 
+                avatar_tex.draw( 
                     x, 
                     y-size.y*0.5, 
                     WHITE, 
@@ -334,7 +335,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 });
         }
 
-        set_camera(match_ui_cam);
+        set_cam(match_ui_zoom,match_ui_target);
         let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.08);
         draw_text_ex(&format!("version {}",env!("CARGO_PKG_VERSION")),
             -1.7,0.9,TextParams { 

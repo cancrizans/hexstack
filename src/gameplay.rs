@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use crate::assets::get_assets_unchecked;
+use crate::assets::mipmaps::set_cam;
 use crate::theme::egui_ctx_setup;
 use crate::tokonoma::{board::Piece, EvalResult, Position};
 
@@ -544,12 +545,7 @@ impl GameApp{
         ) * (6.0* delta_t).min(1.0);
 
         // Game world camera
-        let cam = Camera2D{
-            target : vec2(0.0,0.0),
-            zoom : 0.15*vec2(screen_height()/screen_width(),-1.0),
-            ..Default::default()
-        };
-        set_camera(&cam);
+        let cam = set_cam(0.15, Vec2::ZERO);
 
         // Own ui setup
         let mqui = MqUi::new( &cam);
@@ -897,8 +893,7 @@ impl GameApp{
 
             let (avatar_tex,avatar_src) = get_assets_unchecked().get_avatar(player, gamer.avatar_offset());
 
-            draw_texture_ex(
-                avatar_tex, 
+            avatar_tex.draw(
                 pos.x, 
                 pos.y, 
                 Color::from_vec(vec4(1.0,1.0,1.0,strength*0.5+0.5)), 
