@@ -135,6 +135,11 @@ lazy_static! {
 
     pub static ref BOARD_PALETTES : HashMap<&'static str, BoardPalette> = HashMap::from([
         ("Standard", BoardPalette::default()),
+        ("Warm",BoardPalette::from_egui([
+            [149, 141, 141],
+            [191, 184, 182],
+            [222, 219, 216]
+        ])),
         ("Tournament", BoardPalette::from_egui([
             [122, 164, 156],
             [202, 167, 167],
@@ -213,11 +218,11 @@ impl Default for ThemeConfig{
 
 impl ThemeConfig{
     pub fn get_pieceset(&self) -> PieceSet {self.pieceset}
-    pub fn set_pieceset(&mut self, new_value : PieceSet){
+    pub async fn set_pieceset(&mut self, new_value : PieceSet){
         // this is bad . But they forced my hand
         if self.pieceset != new_value{
             self.pieceset = new_value;
-            block_on(set_pieceset(self.pieceset)).unwrap()
+            set_pieceset(self.pieceset).await.unwrap()
         }
     }
 }

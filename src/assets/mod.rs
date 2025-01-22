@@ -45,14 +45,16 @@ const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 pub enum PieceSet{
     Standard,
     Minimal,
-    Ornate
+    Ornate,
+    Tiles,
 }
 impl PieceSet{
     pub fn name(&self)->&'static str{
         match self{
             Self::Standard => "Standard",
             Self::Minimal => "Minimal",
-            Self::Ornate => "Ornate"
+            Self::Ornate => "Ornate",
+            Self::Tiles => "3D Tiles",
         }
     }
 }
@@ -70,6 +72,15 @@ pub struct PieceSetAsset{
     pub composition_mode : CompositionMode
 }
 
+impl PieceSetAsset{
+    async fn make(fname : &'static str, base_scale : f32, composition_mode : CompositionMode) -> Result<PieceSetAsset,FileError>{
+        Ok(PieceSetAsset{
+            tex : load_mipmapped_texture(&format!("gfx/{}",fname)).await?,
+            base_scale, composition_mode
+        })
+    }
+}
+
 // for reasons unknown to me, impl Drop
 // with tex.delete() creates a black texture? Strange.
 // We should manual delete.
@@ -84,25 +95,28 @@ pub struct PieceSetAsset{
 
 impl PieceSetAsset{
     async fn load(spec : PieceSet) -> Result<PieceSetAsset,FileError>{
+        use CompositionMode as CM;
         let set = match spec{
-            PieceSet::Standard => PieceSetAsset{
-                tex : load_mipmapped_texture("gfx/pieces_sm.png").await?,
-                base_scale : 1.7,
-                composition_mode : CompositionMode::Precomposed,
-            },
-            PieceSet::Minimal => PieceSetAsset{
-                tex : load_mipmapped_texture("gfx/pieces_minimal.png").await?,
-                base_scale : 1.3,
-                composition_mode : CompositionMode::Precomposed,
-            },
+            PieceSet::Standard => PieceSetAsset::make(
+                "pieces_sm.png",1.7,
+                CM::Precomposed,
+            ),
+            PieceSet::Minimal => PieceSetAsset::make(
+                "pieces_minimal.png",
+                 1.3,CM::Precomposed,
+            ),
 
-            PieceSet::Ornate => PieceSetAsset{
-                tex : load_mipmapped_texture("gfx/pieces_ornate.png").await?,
-                base_scale : 2.2,
-                composition_mode : CompositionMode::ComposeOnFlat
-            }
+            PieceSet::Ornate => PieceSetAsset::make(
+                "pieces_ornate.png",
+                2.2, CM::ComposeOnFlat
+            ),
+
+            PieceSet::Tiles => PieceSetAsset::make(
+                "pieces_3dtiles.png",
+                2.1,CM::Precomposed
+            )
         };
-        Ok(set)
+        set.await
     }
 }
 

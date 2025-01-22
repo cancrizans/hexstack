@@ -53,7 +53,7 @@ impl GamerSpec{
             GamerSpec::Decent => ("Decent".to_owned(), "Solid player.".to_owned()),
             GamerSpec::Sharp => ("Sharp".to_owned(), "Serious challenge.".to_owned()),
             GamerSpec::Tough => ("Tough".to_owned(), "Very strong.".to_owned()),
-            GamerSpec::GrandMaster => ("Grandmaster".to_owned(), "Unbelievable".to_owned()),
+            GamerSpec::GrandMaster => ("Grandmaster".to_owned(), "Unbelievable.".to_owned()),
 
             GamerSpec::Perfect { depth } => 
                 (format!("Beastly-{}",depth),format!("Perfect {}-plies",depth))

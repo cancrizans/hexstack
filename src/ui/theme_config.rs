@@ -22,6 +22,7 @@ pub async fn theme_panel(){
 
     loop{
         let mut done = false;
+        let mut pieceset_toset = None;
         clear_background(BG_COLOR);
 
         set_cam(0.2,vec2(-2.0,0.0));
@@ -107,24 +108,31 @@ pub async fn theme_panel(){
                 
                 ui.separator();
 
-                if false{
-                    ui.heading("Pieceset");
+                
+                ui.heading("Pieceset");
 
-                    for pset in [
-                        PieceSet::Standard,
-                        PieceSet::Minimal,
-                        PieceSet::Ornate    
-                    ]{
-                        if ui.radio(cfg.get_pieceset()==pset, pset.name()).clicked(){
-                            cfg.set_pieceset(pset);
-                        }
+                for pset in [
+                    PieceSet::Standard,
+                    // PieceSet::Minimal,
+                    // PieceSet::Ornate,
+                    PieceSet::Tiles 
+                ]{
+                    if ui.radio(cfg.get_pieceset()==pset, pset.name()).clicked(){
+                        pieceset_toset = Some(pset)
                     }
                 }
+                
 
             });
         });
         egui_macroquad::draw();
 
+        if let Some(pset) = pieceset_toset{
+            THEME_CONFIG.write().unwrap().set_pieceset(pset)
+            .await
+
+        }
+ 
         next_frame().await;
         if done{break};
     }
