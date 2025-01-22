@@ -1,6 +1,7 @@
 
 
 use hexstack::assets::load_assets;
+use hexstack::assets::mipmaps::set_cam_rez;
 use hexstack::{arrows::draw_arrow, neighbours_attack, theme, Piece, Player, Position, Tall, Tile};
 use hexstack::Species;
 use macroquad::prelude::*;
@@ -15,6 +16,7 @@ impl Illustration{
     fn new(zoom : f32, name : String, shape : (u32,u32), target : Vec2) -> Self{
         let tex = render_target(2*shape.0, 2*shape.1);
 
+        set_cam_rez(zoom, target, shape.1);
         
         set_camera(&Camera2D{
             zoom : vec2((shape.1 as f32)/(shape.0 as f32), -1.0) * zoom,

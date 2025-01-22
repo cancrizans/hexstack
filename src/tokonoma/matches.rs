@@ -238,6 +238,9 @@ lazy_static!{
             HalfOpening::named("Lovers", b_b5,b_a4),
 
             HalfOpening::named("Empress",a_c5,b_e4),
+            
+
+            HalfOpening::named("Seal", a_c5, Ply::from_str("c5d5").unwrap()),
         ]
     };
 

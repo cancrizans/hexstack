@@ -4,19 +4,33 @@ use macroquad::{camera::{set_camera, Camera2D}, color::Color, file::FileError, m
 use image::{imageops::{self, FilterType}, ImageBuffer};
 use lazy_static::lazy_static;
 
-lazy_static!{
-    static ref CAM_ZOOM : RwLock<f32> = RwLock::new(1.0);
+struct CamState{
+    zoom : f32,
+    vert_rez : u32
+}
+impl CamState{
+    fn wp_to_px(&self, wps:Vec2) -> Vec2{
+        self.zoom * (self.vert_rez as f32) * wps
+    }
+    
 }
 
-pub fn set_cam(zoom : f32, target : Vec2) -> Camera2D{
+lazy_static!{
+    static ref CAM_STATE : RwLock<CamState> = RwLock::new(CamState{zoom:1.0,vert_rez:720});
+}
+
+pub fn set_cam_rez(zoom : f32, target : Vec2, vert_rez : u32) -> Camera2D{
     let cam = Camera2D{
         zoom : zoom * vec2(screen_height()/screen_width(),-1.0),
         target,
         ..Default::default()
     };
     set_camera(&cam);
-    *CAM_ZOOM.write().unwrap() = zoom;
+    *CAM_STATE.write().unwrap() = CamState{zoom,vert_rez};
     cam
+}
+pub fn set_cam(zoom : f32,target : Vec2)->Camera2D{
+    set_cam_rez(zoom, target, 720)
 }
 pub fn set_cam_from_cam2d(camera : &Camera2D){
     set_cam(-camera.zoom.y, camera.target);
@@ -49,10 +63,8 @@ impl MipMappedTexture2D{
         );
         let dst_wp = params.dest_size.unwrap_or(vec2(self.width(), self.height()));
 
-        let camera_zoom = CAM_ZOOM.read().unwrap().clone();
-        let dst_pix = 
-            720.0 * camera_zoom 
-            * dst_wp;
+        let camera = CAM_STATE.read().unwrap();
+        let dst_pix = camera.wp_to_px(dst_wp);
 
         let scale = 0.5*((dst_pix.x/src_size.w) +(dst_pix.y/src_size.h));
         

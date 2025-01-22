@@ -212,7 +212,8 @@ impl Assets{
             });
             
             set_default_camera();
-            draw_text(&ASSET_LOAD_LOG.read().unwrap().message(), 600.0,500.0, 30.0,Color::from_hex(0x111111));
+            draw_text(&ASSET_LOAD_LOG.read().unwrap().message(), 
+            screen_width()*0.5 - 100.0,screen_height()*0.5 + 120.0, 30.0,Color::from_hex(0x111111));
             
 
             time += get_frame_time();
