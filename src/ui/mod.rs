@@ -3,8 +3,7 @@ pub mod rulesheet;
 pub mod match_config;
 pub mod engine_eval;
 pub mod theme_config;
-#[cfg(feature="networking")]
-pub mod net_client;
+
 
 use macroquad::prelude::*;
 

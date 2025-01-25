@@ -1,10 +1,6 @@
 use egui::{FontFamily, FontId, Margin, TextStyle};
 
 use super::{editor::PositionEditor, engine_eval::EngineEvalUI, theme_config};
-#[cfg(feature="networking")]
-use super::net_client;
-
-
 
 use crate::{ assets::{get_assets_unchecked, mipmaps::set_cam}, gameplay::{GamerSpec, MatchConfig}, theme::{self, egui_ctx_setup, set_theme}, Player, Tile};
 use macroquad::window::{clear_background, next_frame, screen_height};
@@ -60,8 +56,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
 
     let mut open_engine_eval_ui = Transition::closed();
     let mut open_theming_ui = Transition::closed();
-    #[cfg(feature="networking")]
-    let mut open_net_ui = Transition::closed();
+    
     loop {
         clear_background(theme::BG_COLOR);
 
@@ -243,13 +238,6 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                         break_out = Some(());
                     };
 
-                    #[cfg(feature="networking")]
-                    if ui.add_sized(
-                        [200.0,50.0],
-                        egui::Button::new("Online")
-                    ).clicked(){
-                        open_net_ui.open()
-                    }
                 })
                 
             
@@ -272,11 +260,6 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
         if open_theming_ui.pop(){
             theme_config::theme_panel().await;
             
-        }
-
-        #[cfg(feature="networking")]
-        if open_net_ui.pop(){
-            net_client::net_client_ui().await;
         }
 
         
