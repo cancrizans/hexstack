@@ -1,7 +1,6 @@
 
 use itertools::Itertools;
 use macroquad::prelude::*;
-use core::num;
 use std::{fmt::Display, ops::{Index, IndexMut}, str::FromStr};
 use memoize::memoize;
 use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, CompositionMode}, theme::get_board_palette};

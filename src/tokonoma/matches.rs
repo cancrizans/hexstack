@@ -176,7 +176,7 @@ pub enum HalfOpeningDetectionError{
 
 pub struct HalfOpening{
     pub name : Option<&'static str>,
-    white_moves : [Ply;2],
+    _white_moves : [Ply;2],
     white_position : PieceMap,
 }
 
@@ -190,7 +190,7 @@ impl HalfOpening{
         pos.apply_move(white_second_move);
 
         HalfOpening{
-            name, white_moves : [white_first_move,white_second_move], white_position : pos.get_pieces(Player::White).clone()
+            name, _white_moves : [white_first_move,white_second_move], white_position : pos.get_pieces(Player::White).clone()
         }
     }
 

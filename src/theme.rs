@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::{Arc, RwLock}};
 
 use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, FontId, TextStyle, Ui};
-use futures::executor::block_on;
 use macroquad::prelude::*;
 
 use crate::assets::{get_assets_unchecked, set_pieceset, PieceSet};

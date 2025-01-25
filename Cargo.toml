@@ -21,6 +21,15 @@ nonmax = "0.5.5"
 circular-buffer = "0.1.9"
 image = {version = "0.25.5", default-features = false, features = ["png"]}
 
+tungstenite = {version = "0.26.1"}
+ws_stream_wasm = {version = "0.7.3"}
+wasm-bindgen = "0.2.100"
+send_wrapper = { version = "0.5", features = ["futures"] }
+
+[features]
+networking = []
+
+
 [build-dependencies]
 itertools = "0.13.0"
 
@@ -30,3 +39,4 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "state_manip"
 harness = false
+

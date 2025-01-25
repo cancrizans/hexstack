@@ -1,16 +1,20 @@
 set -e
-rm -r build/
-cargo build --release --target wasm32-unknown-unknown
+rm -rf build/
+
+./build_wasm.sh hexstack --release
+
 mkdir -p build/
 mkdir -p build/toko_web/
+
 
 cp index.html build/toko_web/index.html
 cp gfx -r build/toko_web/gfx
 cp diags -r build/toko_web/diags
 cp audio -r build/toko_web/audio
 cp mq_js_bundle -r build/toko_web/mq_js_bundle
-cp target/wasm32-unknown-unknown/release/hexstack.wasm build/toko_web/hexstack.wasm
-cp build/toko_web/hexstack.wasm .
+cp dist/hexstack.js build/toko_web/hexstack.js
+cp dist/hexstack_bg.wasm build/toko_web/hexstack_bg.wasm
+
 cd build/toko_web
 zip -r ../toko_web.zip *
 

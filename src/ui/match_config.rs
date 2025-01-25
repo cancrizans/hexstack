@@ -1,6 +1,8 @@
 use egui::{FontFamily, FontId, Margin, TextStyle};
 
 use super::{editor::PositionEditor, engine_eval::EngineEvalUI, theme_config};
+#[cfg(feature="networking")]
+use super::net_client;
 
 
 
@@ -8,6 +10,27 @@ use crate::{ assets::{get_assets_unchecked, mipmaps::set_cam}, gameplay::{GamerS
 use macroquad::window::{clear_background, next_frame, screen_height};
 
 use macroquad::prelude::*;
+
+enum Transition{
+    Closed,
+    Open
+}
+impl Transition{
+    fn closed() -> Self{
+        Transition::Closed
+    }
+    fn open(&mut self){
+        *self = Transition::Open
+    }
+    fn pop(&mut self)-> bool{
+        let was_open = match self{
+            Transition::Open => true,
+            Transition::Closed => false
+        };
+        *self = Transition::Closed;
+        was_open
+    }
+}
 
 pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchConfig{
     let choices : Vec<GamerSpec> = [
@@ -35,8 +58,10 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
 
     let mut time : f32 = 0.0;
 
-    let mut open_engine_eval_ui : bool = false;
-    let mut open_theming_ui : bool = false;
+    let mut open_engine_eval_ui = Transition::closed();
+    let mut open_theming_ui = Transition::closed();
+    #[cfg(feature="networking")]
+    let mut open_net_ui = Transition::closed();
     loop {
         clear_background(theme::BG_COLOR);
 
@@ -173,7 +198,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                         }
                     };
                     if ui.button("Engine evaluation").clicked(){
-                        open_engine_eval_ui = true;
+                        open_engine_eval_ui.open();
                     };
 
                     
@@ -191,7 +216,7 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                 ui.add_space(15.0);
                 
                 if ui.button("Themes and colors...").clicked(){
-                    open_theming_ui = true;
+                    open_theming_ui.open();
                 };
                 
                 
@@ -216,6 +241,14 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
                     );
                     if start_button.clicked(){
                         break_out = Some(());
+                    };
+
+                    #[cfg(feature="networking")]
+                    if ui.add_sized(
+                        [200.0,50.0],
+                        egui::Button::new("Online")
+                    ).clicked(){
+                        open_net_ui.open()
                     }
                 })
                 
@@ -229,16 +262,21 @@ pub async fn match_config_ui(last_match_config : Option<MatchConfig>) -> MatchCo
 
         egui_macroquad::draw();
         
-        if open_engine_eval_ui{
+        if open_engine_eval_ui.pop(){
             let editor = match_config.starting_position.unwrap_or(PositionEditor::setup());
             let evaled_state = EngineEvalUI::new(editor).run().await;
             match_config.starting_position = Some(evaled_state);
-            open_engine_eval_ui = false
+            
         }
 
-        if open_theming_ui{
+        if open_theming_ui.pop(){
             theme_config::theme_panel().await;
-            open_theming_ui = false;
+            
+        }
+
+        #[cfg(feature="networking")]
+        if open_net_ui.pop(){
+            net_client::net_client_ui().await;
         }
 
         
