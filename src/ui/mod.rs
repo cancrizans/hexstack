@@ -78,3 +78,24 @@ impl Button{
     }
 
 }
+
+
+pub fn draw_text_centered(
+    text : &str,
+    font : Font,
+    world_font_size : f32,
+    center : Vec2,
+    color : Color,
+){
+    let (x,y) = center.into();
+    let (font_size, font_scale, font_scale_aspect) 
+        = camera_font_scale(world_font_size);
+    let center = get_text_center(
+        text, Some(font), font_size, font_scale, 0.0);
+    draw_text_ex(text,x-center.x,y-center.y, TextParams{
+        font,
+        font_size, font_scale, font_scale_aspect,
+        color,
+        ..Default::default()
+    });
+}

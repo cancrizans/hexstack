@@ -410,8 +410,11 @@ impl Position{
 
         let win = state_after.is_won();
 
+        let pstring_after : PositionString = state_after.to_position_string();
+
         HistoryEntry{
-            ply, state_before, state_after, moved_piece, disambiguate, kills, captured_after, win
+            ply, state_before, state_after, moved_piece, disambiguate, kills, captured_after, win,
+            cached_pstring_after : pstring_after
         }
     }
 
@@ -685,45 +688,11 @@ impl Position{
                 let signed_piece_value = multiplier * species.value() * (instances.count() as f32);
 
                 signed_piece_value 
-                // + instances.into_iter().map(|t|{
-                //     // let signed_piece_value = multiplier * species.value();
-        
-                //     let horizontal_pos = t.x()+2*t.y();
-                //     assert!((-6..=6).contains(&horizontal_pos));
-        
-                //     let prox_x = (horizontal_pos as f32 * multiplier + 6.0) / 12.0;
-        
-                //     let prox_score = prox_x.powf(2.0);
-        
-                //     let location_score = 0.1 * prox_score * multiplier * species.positional_weight();
-        
-        
-                //     location_score
-                // }).sum::<f32>()
+
 
             }).sum::<f32>() as f32
 
-            // self.get_pieces(color).clone().into_iter().map(|(t,species)|{
-                
-            //     if double_attacked.get(&t){
-            //         return 0.0
-            //     }
 
-            //     let signed_piece_value = multiplier * species.value();
-    
-            //     let horizontal_pos = t.x()+2*t.y();
-            //     assert!((-6..=6).contains(&horizontal_pos));
-    
-            //     let prox_x = (horizontal_pos as f32 * multiplier + 6.0) / 12.0;
-    
-            //     let prox_score = prox_x.powf(2.0);
-    
-            //     let location_score = 0.1 * prox_score * multiplier * species.positional_weight();
-    
-    
-            //     signed_piece_value + location_score
-            // }
-            // ).sum::<f32>() as f32
         }).sum::<f32>() as f32;
         
         
@@ -879,18 +848,122 @@ impl Position{
             self.get_pieces_mut(piece.color).set(*location, piece.species);
         }
 
-        self.recompute_hash();
+        
     }
 
     pub fn flip_to_move(&mut self){
         self.to_play = self.to_play.flip();
-        self.recompute_hash();
+        
     }
 
-    fn recompute_hash(&mut self){
 
+    /// slow potentially
+    fn get_piece_at(&self, location : Tile) -> Option<Piece>{
+        self.get_pieces(Player::White).get(location)
+        .map(|species|Piece{color:Player::White,species})
+        .or(
+            self.get_pieces(Player::Black).get(location)
+            .map(|species|Piece{color:Player::Black,species})
+        )
+    }
+
+    const EMPTY_WHITE : Position = Position{
+        to_play : Player::White,
+        pieces : PlayerMap::new(
+            PieceMap::EMPTY,
+            PieceMap::EMPTY
+        )
+    };
+
+    pub fn to_position_string(&self) -> PositionString{
+        self.into()
     }
 }
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct PositionString(String);
+
+impl From<&Position> for PositionString{
+    fn from(position : &Position) -> Self {
+        let mut buffer = String::new();
+
+        let mut run_length = 0;
+
+        for tile in Tile::ALL_TILES{
+            if let Some(piece) = position.get_piece_at(tile){
+                while run_length > 0{
+                    let span = run_length.min(9);
+                    buffer.push_str(&format!("{}",span));
+                    run_length -= span;
+                }
+                buffer.push(piece.into())
+            } else{
+                run_length += 1;
+            }
+        };
+        
+        buffer.push(match position.to_play(){
+            Player::White => 'W',
+            Player::Black => 'D'
+        });
+
+        PositionString(buffer)
+    }
+}
+impl Display for PositionString{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,"{}",self.0)
+    }
+}
+#[derive(Debug)]
+pub enum PositionStringParsingError{
+    Empty,
+    WrongToMove(char),
+    UnknownCharacter(char),
+    OutOfBounds,
+}
+
+impl TryFrom<PositionString> for Position{
+    type Error = PositionStringParsingError;
+    fn try_from(value: PositionString) -> Result<Self, Self::Error> {
+        use PositionStringParsingError as E;
+        let mut buffer = value.0;
+        
+        let mut position = Position::EMPTY_WHITE;
+        position.to_play = match buffer.pop().ok_or(E::Empty)?{
+            'W' => Player::White,
+            'D' => Player::Black,
+            c => {return Err(E::WrongToMove(c))}
+        };
+
+        let mut offset = 0;
+
+        for ch in buffer.chars(){
+            if offset >= BOARD_SIZE{
+                return Err(E::OutOfBounds)
+            };
+
+            let loc = Tile::ALL_TILES[offset];
+            if let Ok(piece) = Piece::try_from(ch){
+                position.paint(&loc, Some(piece));
+                offset += 1;
+            } else {
+                
+                match ch{
+                    '1'..='9' => {
+                        offset += ch.to_digit(10).unwrap() as usize;
+                    },
+                    _ => {return Err(E::UnknownCharacter(ch))}
+                }
+            }
+        }
+
+        
+        Ok(position)
+    }
+}
+
+
 
 lazy_static! {
     static ref STANDARD_SETUP : Position = {
@@ -997,7 +1070,9 @@ pub struct HistoryEntry{
 
     pub captured_after : PlayerMap<Captured>,
 
-    pub win : Option<Player>
+    pub win : Option<Player>,
+
+    pub cached_pstring_after : PositionString,
 }
 
 impl Display for HistoryEntry{
@@ -1032,7 +1107,7 @@ impl Display for HistoryEntry{
 mod tests{
     use super::*;
     #[test]
-    fn test_zobrist(){
+    fn test_hash_and_pstring(){
         let mut counter = 0;
         let mut rng = ::rand::thread_rng();
         let mut already_seen = HashMap::new();
@@ -1054,6 +1129,11 @@ mod tests{
                     }
                 };
                 
+
+                let pstring : PositionString = (&state).into();
+                let parsed = Position::try_from(pstring).unwrap();
+                assert_eq!(state,parsed);
+
 
                 counter += 1;
 

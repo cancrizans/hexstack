@@ -3,7 +3,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use macroquad::color::Color;
 use lazy_static::lazy_static;
-use super::{Captured, HistoryEntry, PieceMap, Player, PlayerMap, Ply, Position};
+use super::{Captured, HistoryEntry, PieceMap, Player, PlayerMap, Ply, Position, PositionString};
 
 pub struct MatchState{
     state : Position,
@@ -14,7 +14,9 @@ pub struct MatchState{
 
     half_openings : PlayerMap<
         Result<Option<&'static HalfOpening>,HalfOpeningDetectionError>
-        >
+        >,
+
+    beginning_pstring_cache : PositionString,
 }
 
 impl MatchState{
@@ -25,12 +27,15 @@ impl MatchState{
 
     pub fn setup_from(state : Position) -> MatchState{
         let valid_moves = state.valid_moves();
+        let beginning_pstring_cache = state.to_position_string();
+        
         let mut match_state = MatchState{
             state,
             valid_moves,
             is_won : None,
             history : vec![],
-            half_openings : PlayerMap::twin(Err(HalfOpeningDetectionError::NotEnoughMoves))
+            half_openings : PlayerMap::twin(Err(HalfOpeningDetectionError::NotEnoughMoves)),
+            beginning_pstring_cache,
         };
         match_state.refresh();
         match_state
@@ -43,6 +48,7 @@ impl MatchState{
         for player in [Player::White,Player::Black]{
             self.half_openings[player] = self.detect_half_opening(player);
         }
+
     }
 
     pub fn is_won(&self) -> Option<Player>{
@@ -162,6 +168,23 @@ impl MatchState{
                 P::Black => HALF_OPENING_HASHMAP_FLIPPED.get(pos),
             }.map(|v|*v);
             Ok(hop)
+        }
+    }
+
+    pub fn position_string(&self, index : Option<usize>) -> Result<&PositionString,&'static str>{
+        if let Some(hindex) = index{
+            if let Some(entry) = self.history.get(hindex){
+                Ok(&entry.cached_pstring_after)
+            } else {
+                Err("Out of bounds")
+            }
+        } else {
+            if let Some(last) = self.history.iter().last(){
+                Ok(&last.cached_pstring_after)
+            } else{
+                Ok(&self.beginning_pstring_cache)
+            }
+            
         }
     }
 }

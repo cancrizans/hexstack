@@ -6,12 +6,12 @@ use crate::assets::mipmaps::set_cam;
 use crate::theme::egui_ctx_setup;
 use crate::tokonoma::{board::Piece, EvalResult, Position};
 
-use crate::tokonoma::{HalfOpeningDetectionError, MatchState, PlayerMap, TranspositionalTable};
+use crate::tokonoma::{HalfOpeningDetectionError, MatchState, PlayerMap, PositionString, TranspositionalTable};
 
 use crate::{theme::set_theme, ui::{editor::PositionEditor, rulesheet::read_rulesheet}};
 use crate::ui::{Button, MqUi};
 use crate::{theme, Player, Ply, Tile};
-use egui::{Color32, Id, Margin};
+use egui::{Color32, Id, Margin, Sense};
 use itertools::Itertools;
 use macroquad::audio::{play_sound, play_sound_once, PlaySoundParams};
 use macroquad::prelude::*;
@@ -19,6 +19,7 @@ use macroquad::prelude::*;
 use macroquad::experimental::coroutines::{start_coroutine,Coroutine};
 use ::rand::distributions::Open01;
 use ::rand::Rng;
+use send_wrapper::SendWrapper;
 
 const MOVE_ANIM_DURATION : f32 = 0.15;
 
@@ -353,6 +354,12 @@ enum DisplayMode{
     History{index : usize}
 }
 
+#[derive(Clone, Copy)]
+enum PStringClipBoard{
+    Idle, Copied,
+    Pending(Coroutine<()>)
+}
+
 struct GameApp{
 
     
@@ -385,6 +392,9 @@ struct GameApp{
     display_mode : DisplayMode,
 
     poll_history_scroll : bool,
+
+    pstring : PositionString,
+    pstring_state : PStringClipBoard,
     
 }
 
@@ -428,10 +438,13 @@ impl GameApp{
         let starting_position = match_config.starting_position
             .map(|ed|ed.get_state_clone())
             .unwrap_or(Position::setup());
+
+        let match_state = MatchState::setup_from(starting_position);
+        let pstring = match_state.position_string(None).unwrap().clone();
  
         let app_state = GameApp{
             
-            match_state : MatchState::setup_from(starting_position),
+            match_state,
 
             display_mode : DisplayMode::Present,
             gamers ,
@@ -471,6 +484,9 @@ impl GameApp{
                 "Rules".to_string()),
 
             poll_history_scroll : false,
+
+            pstring ,
+            pstring_state : PStringClipBoard::Idle,
         };
 
         
@@ -544,6 +560,23 @@ impl GameApp{
             (target_smooth_to_play) - self.smoothed_to_play
         ) * (6.0* delta_t).min(1.0);
 
+        // refresh PString
+
+        let hindex = match self.display_mode {
+            DisplayMode::History { index } => Some(index),
+            _ => None
+        };
+        let new_pstring = self.match_state.position_string(hindex).unwrap();
+        if *new_pstring != self.pstring{
+            self.pstring_state = match self.pstring_state {
+                PStringClipBoard::Copied => PStringClipBoard::Idle,
+                _ => self.pstring_state
+            };
+            self.pstring = new_pstring.clone();
+        }
+        
+
+
         // Game world camera
         let cam = set_cam(0.15, Vec2::ZERO);
 
@@ -563,6 +596,7 @@ impl GameApp{
             .show_separator_line(false)
             .show(egui_ctx, |ui| {
                 set_theme(ui);
+                
                 ui.horizontal(|ui|{
                     let hlen = self.match_state.history().len();
                     if ui.button("<<").clicked(){
@@ -596,7 +630,56 @@ impl GameApp{
                         self.poll_history_scroll = true;
                     }
                 });
-                ui.add_space(20.0);
+                ui.add_space(10.0);
+
+                use PStringClipBoard as PS;
+                let pstring_text = egui::RichText::new(
+                    &format!("{}{}",self.pstring,
+                            match self.pstring_state{
+                                PS::Copied => " (copied.)",
+                                PS::Idle => "",
+                                PS::Pending(..) => " (copying...)"
+                            }
+                        )
+                    ).small();
+                if ui.add(
+                    egui::Label::new(pstring_text)
+                    .sense(Sense::click())
+                    .wrap(false)
+                ).clicked(){
+                    
+                    let to_clip = self.pstring.to_string();
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        
+                        let fut = SendWrapper::new(async move {
+                            let window = web_sys::window().expect("could not access window");
+                            wasm_bindgen_futures::JsFuture::from(
+                                window.navigator().clipboard().write_text(&to_clip.clone())
+                            ).await.expect("Failed to write to clipboard");
+                        });
+
+                        
+                        
+
+                        self.pstring_state = PStringClipBoard::Pending(
+                            start_coroutine(fut)
+                        )
+                    }
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        println!("Would copy '{}' to clipboard but we're not on wasm.", to_clip);
+                        self.pstring_state = PStringClipBoard::Pending(
+                            start_coroutine(async{})
+                        );
+                    }
+                    
+
+                };
+                
+                
+                ui.add_space(10.0);
                 egui::ScrollArea::vertical()
                 .max_width(300.0)
                 .id_source("history")
@@ -694,6 +777,18 @@ impl GameApp{
             });
         });
         egui_macroquad::draw();
+
+        // write to clipboard
+        match self.pstring_state {
+            PStringClipBoard::Pending(co) => match co.retrieve(){
+                Some(..) => {
+                    self.pstring_state = PStringClipBoard::Copied;
+
+                },
+                _ => {}
+            } ,
+            _ => {}
+        }
 
 
         // State machine tick and audio

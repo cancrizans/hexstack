@@ -113,9 +113,12 @@ pub async fn theme_panel(){
 
                 for pset in [
                     PieceSet::Standard,
+                    PieceSet::Doodle,
                     // PieceSet::Minimal,
                     // PieceSet::Ornate,
-                    PieceSet::Tiles 
+                    PieceSet::Tiles ,
+                    // PieceSet::Wooden,
+                    PieceSet::Chess
                 ]{
                     if ui.radio(cfg.get_pieceset()==pset, pset.name()).clicked(){
                         pieceset_toset = Some(pset)

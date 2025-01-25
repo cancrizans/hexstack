@@ -45,16 +45,22 @@ const FONT_PATH : &'static str = "gfx/Lexend-Light.ttf";
 pub enum PieceSet{
     Standard,
     Minimal,
+    Doodle,
     Ornate,
     Tiles,
+    Wooden,
+    Chess,
 }
 impl PieceSet{
     pub fn name(&self)->&'static str{
         match self{
             Self::Standard => "Standard",
             Self::Minimal => "Minimal",
+            Self::Doodle => "Doodle",
             Self::Ornate => "Ornate",
             Self::Tiles => "3D Tiles",
+            Self::Wooden => "3D Wooden",
+            Self::Chess => "Chess",
         }
     }
 }
@@ -101,6 +107,10 @@ impl PieceSetAsset{
                 "pieces_sm.png",1.7,
                 CM::Precomposed,
             ),
+            PieceSet::Chess => PieceSetAsset::make(
+                "pieces_chess.png", 1.6,
+                CM::Precomposed
+            ),
             PieceSet::Minimal => PieceSetAsset::make(
                 "pieces_minimal.png",
                  1.3,CM::Precomposed,
@@ -114,7 +124,16 @@ impl PieceSetAsset{
             PieceSet::Tiles => PieceSetAsset::make(
                 "pieces_3dtiles.png",
                 2.1,CM::Precomposed
-            )
+            ),
+            PieceSet::Wooden => PieceSetAsset::make(
+                "pieces_3dwooden.png",
+                2.1,CM::Precomposed
+            ),
+            
+            PieceSet::Doodle => PieceSetAsset::make(
+                "pieces_doodle.png",
+                1.7, CM::Precomposed
+            ),
         };
         set.await
     }

@@ -5,7 +5,7 @@ use crate::Tall;
 use super::{Player, Species, Tile, BOARD_SIZE, ROW_OFFSET};
 
 
-const BOARD_BITS : [u8;BOARD_SIZE] = {
+pub const BOARD_BITS : [u8;BOARD_SIZE] = {
     let mut bits = [0;29];
 
     let mut i = 0;
@@ -27,12 +27,22 @@ const BOARD_BITS : [u8;BOARD_SIZE] = {
     bits
 };
 
+#[inline]
+pub const fn tile_to_bit(tile : &Tile) -> u8{
+    tile.to_bit()
+}
+#[inline]
+pub const fn bit_to_tile(bit : u8) -> Tile{
+    Tile::from_bit_unchecked(bit)
+}
+
 #[derive(Copy,Clone,PartialEq, Eq,Hash, Debug)]
 pub struct BitSet(u64);
 
 impl BitSet{
-    pub const fn new()->BitSet{
-        BitSet(0)
+    const EMPTY : BitSet = BitSet(0);
+    pub const fn empty()->BitSet{
+        Self::EMPTY
     }
 
     #[inline]
@@ -40,18 +50,16 @@ impl BitSet{
         self.0.count_ones()
     }
 
+    
+
     #[inline]
-    const fn tile_to_bit(tile : &Tile) -> u8{
-        tile.to_bit()
-    }
-    #[inline]
-    const fn bit_to_tile(bit : u8) -> Tile{
-        Tile::from_bit_unchecked(bit)
+    const fn bit_mask(bit : u8) -> BitSet{
+        BitSet(1<<bit)
     }
 
     #[inline]
     pub const fn tile_mask(tile : &Tile) -> BitSet{
-        BitSet(1<<Self::tile_to_bit(tile))
+        Self::bit_mask(tile_to_bit(tile))
     }
 
     #[inline]
@@ -101,7 +109,7 @@ impl BitSet{
     
 
     pub const BOARD_MASK : BitSet = {
-        let mut mask = BitSet::new();
+        let mut mask = BitSet::empty();
 
         let mut i = 0;
         while i < 29{
@@ -116,7 +124,7 @@ impl BitSet{
     pub fn into_iter(self) -> impl Iterator<Item = Tile>{
         BOARD_BITS.into_iter().flat_map(move |bit|{
             if self.0 & (1<<bit) > 0{
-                Some(Self::bit_to_tile(bit))
+                Some(bit_to_tile(bit))
             } else {None}
         })
     }
@@ -139,7 +147,7 @@ impl BitSet{
             }
         };
 
-        let mut buffer = BitSet::new();
+        let mut buffer = BitSet::empty();
         for &shift in shifts{
             let signed_shift = match color{
                 Player::White => -shift,
@@ -199,7 +207,7 @@ pub struct DoubleCounterBitset{
 
 impl DoubleCounterBitset{
     pub fn new()->Self{
-        Self{bitplane0:BitSet::new(),bitplane1:BitSet::new()}
+        Self{bitplane0:BitSet::empty(),bitplane1:BitSet::empty()}
     }
     pub fn add(&mut self, mask : BitSet){
         let carry = self.bitplane0 & mask;
@@ -220,8 +228,8 @@ pub struct PieceMap{
 
 impl PieceMap{
     pub const EMPTY : PieceMap = PieceMap{
-        flats : BitSet::new(),
-        talls : [BitSet::new(), BitSet::new()]
+        flats : BitSet::empty(),
+        talls : [BitSet::empty(), BitSet::empty()]
     };
 
     /// Flip 180°
@@ -260,7 +268,7 @@ impl PieceMap{
                 self.talls[1].get_at_bit(bit)
             );
             Self::decode_species(flat, tall0, tall1)
-            .map(|sp|(BitSet::bit_to_tile(bit),sp))
+            .map(|sp|(bit_to_tile(bit),sp))
             
         })
     }
@@ -450,6 +458,23 @@ impl PieceMap{
 
     }
 
+    /// Value at bit position guaranteed in 0..=7 range.
+    #[inline]
+    pub fn get_3bit(&self, bit : u8) -> u8{
+        let mask = BitSet::bit_mask(bit);
+        let (flat,tall0,tall1) = (
+            (self.flats & mask).is_not_empty(),
+            (self.talls[0] & mask).is_not_empty(),
+            (self.talls[1] & mask).is_not_empty()
+        );
+
+
+        (if flat {1} else {0})
+        | (if tall0 {2} else {0})
+        | (if tall1 {4} else {0})
+
+    }
+
     pub fn clear_tile(&mut self, tile : Tile){
         let mask = !BitSet::tile_mask(&tile);
 
@@ -473,7 +498,7 @@ mod tests{
             let tile_xyz = Tile::from_xyz(x, y, -x-y);
 
             if let Some(tile_xyz) = tile_xyz{
-                let bit = BitSet::tile_to_bit(&tile_xyz);
+                let bit = tile_to_bit(&tile_xyz);
                 if !BOARD_BITS.contains(&bit){
                     panic!("tile {} ({}/{}) maps to bit {} which is invalid.", 
                     tile_xyz,
@@ -485,7 +510,7 @@ mod tests{
         });
 
         BOARD_BITS.iter().for_each(|b|{
-            let nasty = BitSet::bit_to_tile(*b);
+            let nasty = bit_to_tile(*b);
 
             assert!(Tile::from_xyz(nasty.x(), nasty.y(), nasty.z()).is_some())
         });

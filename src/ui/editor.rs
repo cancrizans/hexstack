@@ -1,7 +1,7 @@
 use std::iter::once;
 use circular_buffer::CircularBuffer;
 
-use crate::{assets::{get_assets_unchecked, mipmaps::set_cam_from_cam2d}, theme, ui::MqUi, Piece, Player, Position, Species, Tile};
+use crate::{assets::{get_assets_unchecked, mipmaps::set_cam_from_cam2d}, theme, tokonoma::PositionString, ui::{draw_text_centered, MqUi}, Piece, Player, Position, Species, Tile};
 use macroquad::prelude::*;
 
 use super::Button;
@@ -150,15 +150,22 @@ impl PositionEditor{
             Player::White => "White",
             Player::Black => "Black"
         });
-        let (x,y) = to_move_rect.center().into();
-        let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.8);
-        let center = get_text_center(text, Some(assets.font), font_size, font_scale, 0.0);
-        draw_text_ex(text,x-center.x,y-center.y, TextParams{
-            font : assets.font,
-            font_size, font_scale, font_scale_aspect,
-            color : Color::from_rgba(0x11, 0x11, 0x11, if is_highlighted_to_move{255} else {160}),
-            ..Default::default()
-        });
+        
+        draw_text_centered(
+            text, assets.font, 0.8, 
+            to_move_rect.center(), 
+            Color::from_rgba(0x11, 0x11, 0x11, if is_highlighted_to_move{255} else {160})
+        );
+
+        
+        let pstring : PositionString = (&self.state).into();
+        draw_text_centered(
+            &format!("{}",pstring), assets.font, 0.4, vec2(0.0,-4.5), 
+            
+            Color::from_hex(0x555555));
+
+
+
 
         if is_highlighted_to_move & is_mouse_button_pressed(MouseButton::Left){
             self.push_history();

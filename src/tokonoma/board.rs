@@ -1,11 +1,10 @@
 
-use itertools::Itertools;
 use macroquad::prelude::*;
-use std::{fmt::Display, ops::{Index, IndexMut}, str::FromStr};
+use std::{collections::HashMap, fmt::Display, ops::{Index, IndexMut}, str::FromStr};
 use memoize::memoize;
 use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, CompositionMode}, theme::get_board_palette};
-use super::bitboards::BitSet;
-
+use super::{bitboards::{bit_to_tile, BitSet, BOARD_BITS}, PositionStringParsingError};
+use lazy_static::lazy_static;
 
 pub const BOARD_RADIUS : i8 = 3;
 const BOARD_SHORT_RADIUS : i8 = 2;
@@ -297,11 +296,20 @@ impl Tile{
         (self.x()-self.y()).rem_euclid(3) as u8
     }
 
-    pub fn all_tiles() -> impl Iterator<Item = Tile>{
-        let range = -(BOARD_RADIUS as i8)..=BOARD_RADIUS as i8;
-        range.clone().cartesian_product(range)
-            .map(|(x,y)|Tile::from_xyz(x, y, -x-y))
-            .flatten()
+    pub const ALL_TILES : [Tile;BOARD_SIZE] = {
+        let mut all_tiles = [Tile(0);BOARD_SIZE];
+
+        let mut i = 0;
+        while i < BOARD_SIZE{
+            let bit = BOARD_BITS[i];
+            all_tiles[i] = bit_to_tile(bit);
+            i+=1;
+        };
+        all_tiles
+    };
+
+    pub const fn all_tiles() -> [Tile;29]{
+        Self::ALL_TILES
     }
 
     pub fn draw_highlight_outline(&self, thickness : f32, color : Color, flip_board : bool){
@@ -324,12 +332,14 @@ impl Tile{
             Player::Black => 1.0
         };
 
+        let tile_size = tex.width() * 0.25;
+
         tex.draw(
             x-R,
             y-R,
             WHITE, DrawTextureParams{
                 dest_size : Some(vec2(2.0*R,2.0*R)),
-                source : Some(Rect::new(0.0,128.0*(1.0 + 2.0*src_off),128.0,128.0)),
+                source : Some(Rect::new(0.0,tile_size*(1.0 + 2.0*src_off),tile_size,tile_size)),
                 ..Default::default()
             }
         )
@@ -360,7 +370,7 @@ impl Tile{
         
 
         
-        Self::all_tiles().filter(|t|t.is_border())
+        Self::all_tiles().into_iter().filter(|t|t.is_border())
         .for_each(|t|{
             let (x,y) = t.to_world(flip_board);
             draw_hexagon(x, y, 
@@ -371,7 +381,7 @@ impl Tile{
                 dark_color);
         });
 
-        Self::all_tiles().for_each(|t|{
+        Self::ALL_TILES.iter().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
             let tile_color = t.tile_color();
 
@@ -405,7 +415,7 @@ impl Tile{
 
     pub fn draw_tile_numbers( flip_board : bool){
         let font = get_assets_unchecked().font;
-        Self::all_tiles().for_each(|t|{
+        Self::ALL_TILES.iter().for_each(|t|{
             let (x,y) = t.to_world(flip_board);
             let (x,y) = (x,y+0.4);
 
@@ -646,7 +656,7 @@ impl<T> PlayerMap<T> where T : Clone{
     }
 }
 impl<T> PlayerMap<T>{
-    pub fn new(white : T, black : T) -> PlayerMap<T>{
+    pub const fn new(white : T, black : T) -> PlayerMap<T>{
         PlayerMap{white,black}
     }
     pub fn new_on_player(first_player : Player, first_value : T, other_value : T) -> Self{
@@ -883,8 +893,68 @@ impl Piece{
     pub fn value(&self) -> f32{
         self.species.value()
     }
+
+    const fn to_char(&self) -> char{
+        let piece = self;
+        match piece.color{
+            Player::White => match piece.species{
+                Species::Flat => 'f',
+                Species::Lone(tall) => match tall{
+                    Tall::Hand => 'a',
+                    Tall::Blind => 'b',
+                    Tall::Star => 's'
+                },
+                Species::Stack(tall) => match tall{
+                    Tall::Hand => 'A',
+                    Tall::Blind => 'B',
+                    Tall::Star => 'S'
+                }
+            },
+            Player::Black => match piece.species{
+                Species::Flat => 'o',
+                Species::Lone(tall) => match tall{
+                    Tall::Hand => 'h',
+                    Tall::Blind => 'm',
+                    Tall::Star => 'x'
+                },
+                Species::Stack(tall) => match tall{
+                    Tall::Hand => 'H',
+                    Tall::Blind => 'M',
+                    Tall::Star => 'X'
+                }
+            },
+            
+        }
+    }
+
 }
 
+impl From<Piece> for char{
+    fn from(piece: Piece) -> Self {
+        piece.to_char()
+    }
+}
+lazy_static!{
+    static ref CHAR_PIECE_MAP : HashMap<char, Piece> = {
+        let mut hm = HashMap::new();
+        for color in [Player::White, Player::Black]{
+            for species in Species::ALL{
+                let p = Piece{color,species};
+                hm.insert(p.to_char(),p);
+            }
+        };
+        hm
+    };
+}
+
+impl TryFrom<char> for Piece{
+    type Error = PositionStringParsingError;
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        CHAR_PIECE_MAP.get(&value)
+        .map(|v|*v)
+        .ok_or(PositionStringParsingError::UnknownCharacter(value))
+    }
+}
 
 
 #[derive(Clone, Copy,PartialEq,Eq, Hash, Debug)]
@@ -1007,6 +1077,7 @@ impl Captured{
 
 #[cfg(test)]
 mod tests{
+    use itertools::Itertools;
 
     use super::*;
     #[test]
@@ -1025,7 +1096,7 @@ mod tests{
             })
         );
 
-        Tile::all_tiles().for_each(|t|{
+        Tile::ALL_TILES.into_iter().for_each(|t|{
             
             let parsed = Tile::from_str(&format!("{}",t))
             .expect("Tile parse error");
