@@ -358,8 +358,9 @@ enum DisplayMode{
 
 #[derive(Clone, Copy)]
 enum PStringClipBoard{
-    Idle, Copied,
-    Pending(Coroutine<()>)
+    Idle, 
+    Copied(Result<(),()>),
+    Pending(Coroutine<Result<(),()>>)
 }
 
 struct GameApp{
@@ -574,7 +575,7 @@ impl GameApp{
         let new_pstring = self.match_state.position_string(hindex).unwrap();
         if *new_pstring != self.pstring{
             self.pstring_state = match self.pstring_state {
-                PStringClipBoard::Copied => PStringClipBoard::Idle,
+                PStringClipBoard::Copied(..) => PStringClipBoard::Idle,
                 _ => self.pstring_state
             };
             self.pstring = new_pstring.clone();
@@ -641,7 +642,7 @@ impl GameApp{
                 let pstring_text = egui::RichText::new(
                     &format!("{}{}",self.pstring,
                             match self.pstring_state{
-                                PS::Copied => " (copied.)",
+                                PS::Copied(res) => match res {Ok(..) => " (copied.)", Err(..) => " (copy failed.)"},
                                 PS::Idle => "",
                                 PS::Pending(..) => " (copying...)"
                             }
@@ -658,10 +659,11 @@ impl GameApp{
                     {
                         
                         let fut = SendWrapper::new(async move {
-                            let window = web_sys::window().expect("could not access window");
+                            let window = web_sys::window().ok_or(())?;
                             wasm_bindgen_futures::JsFuture::from(
                                 window.navigator().clipboard().write_text(&to_clip.clone())
-                            ).await.expect("Failed to write to clipboard");
+                            ).await.map_err(|_|())?;
+                            Ok(())
                         });
 
                         
@@ -676,7 +678,7 @@ impl GameApp{
                     {
                         println!("Would copy '{}' to clipboard but we're not on wasm.", to_clip);
                         self.pstring_state = PStringClipBoard::Pending(
-                            start_coroutine(async{})
+                            start_coroutine(async{Err(())})
                         );
                     }
                     
@@ -788,8 +790,8 @@ impl GameApp{
         // write to clipboard
         match self.pstring_state {
             PStringClipBoard::Pending(co) => match co.retrieve(){
-                Some(..) => {
-                    self.pstring_state = PStringClipBoard::Copied;
+                Some(res) => {
+                    self.pstring_state = PStringClipBoard::Copied(res);
 
                 },
                 _ => {}
