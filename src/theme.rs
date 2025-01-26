@@ -197,13 +197,41 @@ impl BoardPaletteConfig{
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Copy)]
+pub enum BoardTilesModeConfig{
+    None,
+    Normal,
+    WithBorder,
+    Outline
+}
+
+impl BoardTilesModeConfig{
+    pub fn name(&self) -> &'static str{
+        use BoardTilesModeConfig as B;
+        match self{
+            B::None => "No tiles",
+            B::Normal => "Tiles",
+            B::WithBorder => "Tiles + Border",
+            B::Outline => "Outlines"
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct BoardModeConfig{
+    pub tiles : BoardTilesModeConfig,
+    pub trigrid : bool,
+}
+
+
+
 #[derive(Clone)]
 pub struct ThemeConfig{
     pub board_palette : BoardPaletteConfig,
 
     pieceset : PieceSet,
     
-    
+    pub board_mode : BoardModeConfig,    
 }
 
 impl ThemeConfig{
@@ -216,7 +244,11 @@ impl Default for ThemeConfig{
     fn default() -> Self {
         ThemeConfig { 
             board_palette: BoardPaletteConfig::Named("Standard") ,
-            pieceset : PieceSet::Standard
+            pieceset : PieceSet::Standard,
+            board_mode : BoardModeConfig{
+                tiles : BoardTilesModeConfig::Normal,
+                trigrid : false
+            }
         }
     }
 }
@@ -227,7 +259,7 @@ impl ThemeConfig{
         // this is bad . But they forced my hand
         if self.pieceset != new_value{
             self.pieceset = new_value;
-            set_pieceset(self.pieceset).await.unwrap()
+            set_pieceset(self.pieceset)
         }
     }
 }

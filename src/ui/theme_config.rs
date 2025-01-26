@@ -3,7 +3,7 @@ use egui::Margin;
 use macroquad::prelude::*;
 use ::rand::prelude::SliceRandom;
 
-use crate::{assets::{mipmaps::set_cam, PieceSet}, theme::{color_to_color32, egui_ctx_setup, set_theme, BoardPalette, BoardPaletteConfig, BG_COLOR, BOARD_PALETTES, THEME_CONFIG}, Position, Tile};
+use crate::{assets::{mipmaps::set_cam, PieceSet}, theme::{color_to_color32, egui_ctx_setup, set_theme, BoardPalette, BoardPaletteConfig, BoardTilesModeConfig, BG_COLOR, BOARD_PALETTES, THEME_CONFIG}, Position, Tile};
 
 
 
@@ -55,53 +55,71 @@ pub async fn theme_panel(){
 
 
                 let mut cfg = THEME_CONFIG.write().unwrap();
-                
-                BOARD_PALETTES.iter().for_each(|(n,_)|{
-                    ui.horizontal(|ui|{
-                        let value = BoardPaletteConfig::Named(n);
-                        let pii = value.to_palette();
-                        for i in 0..3{
-                            let col = pii.sample(i);
-                            let bgcol = color_to_color32(col);
-                            egui::Frame::none()
-                                .fill(bgcol)
-                                .inner_margin(10.0)
-                                .outer_margin(0.0)
-                                .show(ui,|_ui|{});
-                                
-                        }
-                        ui.radio_value(
-                            &mut cfg.board_palette, 
-                            value, 
-                            *n);
 
-                        
-                        
+                ui.vertical(|ui|{
+                    egui::ComboBox::from_id_source("boardmode")
+                    .selected_text(cfg.board_mode.tiles.name())
+                    .show_ui(ui,|ui|{
+                        use BoardTilesModeConfig as B;
+                        [B::None, B::Normal, B::WithBorder, B::Outline].into_iter()
+                        .for_each(|ch|{
+                            ui.selectable_value(&mut cfg.board_mode.tiles, ch, ch.name());
+                        });
                     });
-                    
+                    ui.checkbox(&mut cfg.board_mode.trigrid,"Tri grid");
                 });
 
-                let resp_cust = 
-                ui.radio(
-                    cfg.board_palette.is_custom(), 
-                    
-                    "Custom");
-                if resp_cust.clicked(){
-                    cfg.board_palette = BoardPaletteConfig::Custom(
-                        cfg.board_palette.to_palette()
-                    )
-                }
-                    
-                
-                match cfg.board_palette{
-                    BoardPaletteConfig::Custom(ref mut pal) => {
-                        let mut cols = pal.to_egui();
+                match cfg.board_mode.tiles{
+                    BoardTilesModeConfig::Normal|BoardTilesModeConfig::WithBorder => {
+                        BOARD_PALETTES.iter().for_each(|(n,_)|{
+                            ui.horizontal(|ui|{
+                                let value = BoardPaletteConfig::Named(n);
+                                let pii = value.to_palette();
+                                for i in 0..3{
+                                    let col = pii.sample(i);
+                                    let bgcol = color_to_color32(col);
+                                    egui::Frame::none()
+                                        .fill(bgcol)
+                                        .inner_margin(10.0)
+                                        .outer_margin(0.0)
+                                        .show(ui,|_ui|{});
+                                        
+                                }
+                                ui.radio_value(
+                                    &mut cfg.board_palette, 
+                                    value, 
+                                    *n);
 
-                        cols.iter_mut().enumerate().for_each(|(_,c)|{
-                            ui.color_edit_button_srgb(c);
+                                
+                                
+                            });
+                            
                         });
 
-                        *pal = BoardPalette::from_egui(cols);
+                        let resp_cust = 
+                        ui.radio(
+                            cfg.board_palette.is_custom(), 
+                            
+                            "Custom");
+                        if resp_cust.clicked(){
+                            cfg.board_palette = BoardPaletteConfig::Custom(
+                                cfg.board_palette.to_palette()
+                            )
+                        }
+                            
+                        
+                        match cfg.board_palette{
+                            BoardPaletteConfig::Custom(ref mut pal) => {
+                                let mut cols = pal.to_egui();
+
+                                cols.iter_mut().enumerate().for_each(|(_,c)|{
+                                    ui.color_edit_button_srgb(c);
+                                });
+
+                                *pal = BoardPalette::from_egui(cols);
+                            },
+                            _ => {}
+                        }
                     },
                     _ => {}
                 }

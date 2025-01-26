@@ -19,6 +19,8 @@ use macroquad::prelude::*;
 use macroquad::experimental::coroutines::{start_coroutine,Coroutine};
 use ::rand::distributions::Open01;
 use ::rand::Rng;
+
+#[cfg(target_arch="wasm32")]
 use send_wrapper::SendWrapper;
 
 const MOVE_ANIM_DURATION : f32 = 0.15;
@@ -398,10 +400,12 @@ struct GameApp{
     
 }
 
+const SUI_X : f32 = 6.3;
+
 fn make_takeback_button() -> Button{
     Button::new(
         get_assets_unchecked().btn_takeback,
-        Rect::new(6.5,1.0,1.0,1.0),
+        Rect::new(SUI_X,-2.0,1.0,1.0),
         "Undo Move".to_string()
     )
 }
@@ -462,26 +466,27 @@ impl GameApp{
             btn_mate_takeback : make_takeback_button(),
             btn_tile_letters : Button::new(
                 assets.btn_letters,
-                Rect::new(6.5,2.0,1.0,1.0),
-                "Show Tiles".to_string()
+                Rect::new(SUI_X,-1.0,1.0,1.0),
+                "Show Coords".to_string()
             ),
 
             btn_toggle_lines : Button::new(
                 assets.btn_lines,
-                Rect::new(6.5,3.0,1.0,1.0),
-                "Show Patterns".to_string()
+                Rect::new(SUI_X,0.0,1.0,1.0),
+                "Show Arrows".to_string()
             ),
+            btn_rulesheet : Button::new(
+                assets.btn_rules, 
+                Rect::new(7.5,4.5,1.0,1.0), 
+                "Rules".to_string()),
 
             btn_exit : Button::new(
                 assets.btn_exit,
-                Rect::new(8.0,-6.0,1.0,1.0),
+                Rect::new(7.5,-5.75,1.0,1.0),
                 "Quit".to_string()
             ),
 
-            btn_rulesheet : Button::new(
-                assets.btn_rules, 
-                Rect::new(7.5,5.0,1.0,1.0), 
-                "Rules".to_string()),
+            
 
             poll_history_scroll : false,
 
@@ -578,7 +583,7 @@ impl GameApp{
 
 
         // Game world camera
-        let cam = set_cam(0.15, Vec2::ZERO);
+        let cam = set_cam(0.17, Vec2::ZERO);
 
         // Own ui setup
         let mqui = MqUi::new( &cam);
@@ -680,12 +685,14 @@ impl GameApp{
                 
                 
                 ui.add_space(10.0);
+
+                const HIST_WIDTH : f32 = 200.0;
                 egui::ScrollArea::vertical()
-                .max_width(300.0)
+                .max_width(HIST_WIDTH)
                 .id_source("history")
                 .show(ui,|ui|{
-                    ui.set_max_width(250.0);
-                    ui.set_min_width(250.0);
+                    ui.set_max_width(HIST_WIDTH);
+                    ui.set_min_width(HIST_WIDTH);
                     
                     ui.vertical(|ui|{
 
@@ -718,9 +725,9 @@ impl GameApp{
                                     }
                                 }
                             };
-                            ui.label(egui::RichText::new(
+                            ui.add(egui::Label::new(egui::RichText::new(
                                 opening_text
-                            ).strong()
+                            ).strong()).wrap(false)
                             );
                         }
 

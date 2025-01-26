@@ -266,7 +266,7 @@ impl Assets{
         // but we still load the default so it's
         // slotted in the loading screen.
         set_message("Loading pieceset...".to_string());
-        set_pieceset(PieceSet::Standard).await?;
+        set_pieceset(PieceSet::Standard);
 
 
         // unwrap font error because I don't wanna cast
@@ -347,11 +347,20 @@ impl Assets{
     
 }
 
+#[derive(Clone)]
+pub enum PieceSetPromise{
+    Ready(PieceSetAsset),
+    Pending(Coroutine<PieceSetAsset>),
+}
 
 lazy_static! {
     static ref ASSETS : OnceLock<Assets> = OnceLock::new();
 
-    static ref PIECESET : Arc<RwLock<Option<PieceSetAsset>>> = Arc::new(RwLock::new(None));
+    static ref PIECESET : Arc<RwLock<Option<PieceSetPromise>>> = Arc::new(RwLock::new(None));
+
+    static ref DUMMY_PIECESET : PieceSetAsset = {
+        PieceSetAsset { tex: MipMappedTexture2D::empty(), base_scale: 1.0, composition_mode: CompositionMode::Precomposed }
+    };
 }
 
 pub async fn load_assets(){
@@ -359,22 +368,36 @@ pub async fn load_assets(){
     ASSETS.get_or_init(||assets);
 }
 
-pub fn get_pieceset() -> Option<PieceSetAsset>{
-    PIECESET.read().unwrap().clone()
-}
 pub fn get_pieceset_unchecked() -> PieceSetAsset{
-    get_pieceset().unwrap()
+    let prom : PieceSetPromise = PIECESET.read().unwrap().clone().unwrap();
+
+    match prom {
+        PieceSetPromise::Ready(val) => val,
+        PieceSetPromise::Pending(co) => {
+            match co.retrieve(){
+                Some(val) => {
+                    *PIECESET.write().unwrap() = Some(PieceSetPromise::Ready(val.clone()));
+                    val
+                },
+                None => {
+                    DUMMY_PIECESET.clone()
+                }
+            }
+        }
+    }
 }
-pub async fn set_pieceset(set : PieceSet) -> Result<(),FileError>{
+pub fn set_pieceset(set : PieceSet){
     // if let Some(..) = get_pieceset(){
     //     println!("Invalidating old pieceset tex.");
     //     PIECESET.write().unwrap().as_mut().unwrap().tex.delete();
     // }
 
-    let psa = PieceSetAsset::load(set).await?;
-    println!("Loaded standard pieceset.");
-    *PIECESET.write().unwrap() = Some(psa);
-    Ok(())
+    let co = start_coroutine(async move{
+        PieceSetAsset::load(set).await.unwrap()
+    });
+    // println!("Loaded standard pieceset.");
+    *PIECESET.write().unwrap() = Some(PieceSetPromise::Pending(co));
+    
 }
 
 pub fn get_assets_unchecked()->&'static Assets{

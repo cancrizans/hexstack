@@ -62,11 +62,11 @@ impl Button{
         let font = get_assets_unchecked().font;
 
         if self.alpha > 0.001{
-            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.55);
+            let (font_size, font_scale, font_scale_aspect) = camera_font_scale(0.45);
             draw_text_ex(
                 &self.text,
                 self.rect.x + self.rect.w,
-                self.rect.y + self.rect.h * 0.5 + 0.25,
+                self.rect.y + self.rect.h * 0.5 + 0.15,
                 TextParams{font,font_scale,font_scale_aspect,font_size,
                     color : Color::from_rgba(0x11, 0x11, 0x11, (255.0 * self.alpha) as u8),
                     ..Default::default()

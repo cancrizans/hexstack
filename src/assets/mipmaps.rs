@@ -42,6 +42,10 @@ pub struct MipMappedTexture2D{
 }
 
 impl MipMappedTexture2D{
+    pub fn empty()->Self{
+        Self { mips: vec![Texture2D::empty()] }
+    }
+
     #[inline]
     pub fn mip0(&self) -> Texture2D{
         self.mips[0]

@@ -2,7 +2,7 @@
 use macroquad::prelude::*;
 use std::{collections::HashMap, fmt::Display, ops::{Index, IndexMut}, str::FromStr};
 use memoize::memoize;
-use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, CompositionMode}, theme::get_board_palette};
+use crate::{arrows::draw_arrow, assets::{get_assets_unchecked, get_pieceset_unchecked, CompositionMode}, theme::{get_board_palette, get_theme_config, BoardTilesModeConfig}};
 use super::{bitboards::{bit_to_tile, BitSet, BOARD_BITS}, PositionStringParsingError};
 use lazy_static::lazy_static;
 
@@ -312,6 +312,31 @@ impl Tile{
         Self::ALL_TILES
     }
 
+    const LINES_TABLE_LEN : usize = (BOARD_SHORT_RADIUS + 2*BOARD_RADIUS) as usize;
+    pub const LINES : [(Tile,Tile); Self::LINES_TABLE_LEN] = {
+        let blank = Tile::from_xyz_unchecked(0, 0,0);
+        let mut out = [(blank,blank); Self::LINES_TABLE_LEN];
+
+        let mut off = 0;
+
+        let mut x = - BOARD_SHORT_RADIUS;
+        while x <= BOARD_SHORT_RADIUS{
+            let miny =  - BOARD_RADIUS + (if x<0 {-x} else {0});
+            let maxy = BOARD_RADIUS + (if x>0 {-x} else {0});
+
+            out[off] = (
+                Tile::from_xyz_unchecked(x, miny, -x-miny),
+                Tile::from_xyz_unchecked(x, maxy, -x-maxy),
+            );
+            off+=1;
+            x+=1;
+        }
+
+        
+
+        out
+    };
+
     pub fn draw_highlight_outline(&self, thickness : f32, color : Color, flip_board : bool){
         let (x,y) = self.to_world(flip_board);
         draw_hexagon(x, y, 1.0, thickness, true, color, Color::from_rgba(0, 0,0,0));
@@ -363,53 +388,85 @@ impl Tile{
     }
 
     pub fn draw_board(flip_board : bool){
+        use BoardTilesModeConfig as BTMC;
+        let conf = get_theme_config();
+        let board_mode = conf.board_mode;
+
         const DARK_TILE : Tile = Tile::from_xyz_unchecked(0, -1, 1);
         const LIGHT_TILE : Tile = Tile::from_xyz_unchecked(0, 1, -1);
         let dark_color = DARK_TILE.tile_color();
         let light_color = LIGHT_TILE.tile_color();
         
 
+        match board_mode.tiles{
+            BTMC::WithBorder => {
+                Self::all_tiles().into_iter().filter(|t|t.is_border())
+                .for_each(|t|{
+                    let (x,y) = t.to_world(flip_board);
+                    draw_hexagon(x, y, 
+                        1.1, 
+                        0.0,//0.05, 
+                        true,
+                        Color::from_hex(0x111111),
+                        dark_color);
+                });
+            },
+            _ => {}
+        };
         
-        Self::all_tiles().into_iter().filter(|t|t.is_border())
-        .for_each(|t|{
-            let (x,y) = t.to_world(flip_board);
-            draw_hexagon(x, y, 
-                1.1, 
-                0.0,//0.05, 
-                true,
-                Color::from_hex(0x111111),
-                dark_color);
-        });
+        match board_mode.tiles{
+            BTMC::Normal|BTMC::WithBorder|BTMC::Outline => {
+                Self::ALL_TILES.iter().for_each(|t|{
+                    let (x,y) = t.to_world(flip_board);
+                    
 
-        Self::ALL_TILES.iter().for_each(|t|{
-            let (x,y) = t.to_world(flip_board);
-            let tile_color = t.tile_color();
+                    let (fill,lthick) = match board_mode.tiles{
+                        BTMC::Outline => (Color::from_rgba(0,0,0,0),0.05),
+                        _ => (t.tile_color(),0.0)
+                    };
 
-            draw_hexagon(x, y, 
-                1.0, 
-                0.0,//0.05, 
-                true,
-                Color::from_hex(0x111111),
-                tile_color);
-        });
+                    draw_hexagon(x, y, 
+                        1.0, 
+                        lthick, 
+                        true,
+                        Color::from_hex(0x222222),
+                        fill);
+                });
 
+                for player in [Player::Black,Player::White]{
+                    let (x,y) = Tile::corner(player).to_world(flip_board);
+        
+                    
+                    let col = match player{
+                        Player::Black => dark_color,
+                        Player::White => light_color,
+                    };
+        
+                    draw_hexagon(x, y, 
+                        0.6, 
+                        0.0,
+                        true,
+                        Color::from_hex(0x111111),
+                        col);
+                }
+            },
+            BTMC::None => {}
+        };
+        
         
 
-        for player in [Player::Black,Player::White]{
-            let (x,y) = Tile::corner(player).to_world(flip_board);
+        if board_mode.trigrid{
+            Self::ALL_TILES.iter().for_each(|t|{
+                let (x,y) = t.to_world(flip_board).into();
+                t.adjacent().into_iter().flatten()
+                .for_each(|a|{
+                    let (xe,ye) = a.to_world(flip_board);
+                    let (x2,y2) = (0.5*(x+xe),0.5*(y+ye));
 
-            
-            let col = match player{
-                Player::Black => dark_color,
-                Player::White => light_color,
-            };
+                    draw_line(x,y,x2,y2,0.05,Color::from_hex(0x222222));
 
-            draw_hexagon(x, y, 
-                0.6, 
-                0.0,
-                true,
-                Color::from_hex(0x111111),
-                col);
+                });
+            });
         }
     }
 
@@ -619,7 +676,7 @@ impl Player{
     }
 
     pub fn ui_info_pos(&self) -> Vec2 {
-        vec2(5.0,5.0) * match self{
+        vec2(5.5,4.0) * match self{
             Player::White => 1.0,
             Player::Black => -1.0,
         } 
