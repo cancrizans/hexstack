@@ -1,5 +1,5 @@
 use std::future::Future;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, sync::OnceLock};
 pub mod mipmaps;
@@ -185,6 +185,46 @@ lazy_static!{
     static ref ASSET_LOAD_LOG : Arc<RwLock<AssetLoadLog>> = Arc::new(RwLock::new(AssetLoadLog::new()));
 }
 
+pub enum AssetLoadingError{
+    File(FileError),
+    Font(FontError)
+}
+
+impl Display for AssetLoadingError{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self{
+            AssetLoadingError::File(fe) => write!(f,"FileError: {}",fe),
+            AssetLoadingError::Font(fe) => write!(f,"FontError: {}",fe),
+        }
+    }
+}
+impl From<FileError> for AssetLoadingError{
+    fn from(value: FileError) -> Self {
+        AssetLoadingError::File(value)
+    }
+}
+impl From<FontError> for AssetLoadingError{
+    fn from(value: FontError) -> Self {
+        AssetLoadingError::Font(value)
+    }
+}
+
+// Mquad doesn't have webp feature for image
+async fn load_texture_webp(path : &str) -> Result<Texture2D,FileError>{
+
+    let bytes = load_file(path).await?;
+    let img = 
+    image::load_from_memory_with_format(&bytes, image::ImageFormat::WebP)
+    .unwrap_or_else(|e| panic!("{}", e))
+    .to_rgba8();
+    let width = img.width() as u16;
+    let height = img.height() as u16;
+    let bytes = img.into_raw();
+
+    let tex = Texture2D::from_rgba8(width, height, &bytes);
+
+    Ok(tex)
+}
 
 impl Assets{
 
@@ -212,7 +252,7 @@ impl Assets{
                                 egui::CentralPanel::default()
                                 .show(egui_ctx, |ui|{
                                     ui.label(
-                                        &format!("Error loading assets: {:?}", error)
+                                        &format!("Error loading assets: {}", error)
                                     )
                                 });
                             });
@@ -257,7 +297,7 @@ impl Assets{
 
 
     
-    pub async fn load()->Result<Assets,FileError> {
+    pub async fn load()->Result<Assets,AssetLoadingError> {
         fn set_message(new_mess : String){
             ASSET_LOAD_LOG.write().unwrap().set_message(new_mess);
         }
@@ -269,10 +309,8 @@ impl Assets{
         set_pieceset(PieceSet::Standard);
 
 
-        // unwrap font error because I don't wanna cast
-        // and I can't update mquad :(
         set_message("Loading font...".to_string());
-        let font = load_ttf_font(FONT_PATH).await.unwrap();
+        let font = load_ttf_font(FONT_PATH).await?;
         font.set_filter(FilterMode::Linear);
 
         let font_bytes = macroquad::file::load_file(&FONT_PATH)
@@ -292,7 +330,7 @@ impl Assets{
 
         ]{
             diagrams.insert(name, 
-                    load_texture(&format!("diags/{}.png",name)).await?
+                    load_texture_webp(&format!("diags/{}.webp",name)).await?
             );
         };
 

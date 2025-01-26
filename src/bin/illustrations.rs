@@ -36,11 +36,12 @@ impl Illustration{
         path_temp.push("tmpdiag.png");
         img.export_png(&path_temp.to_str().unwrap());
 
-        let path_final = format!("diags/{}.png",self.name);
+        let path_final = format!("diags/{}.webp",self.name);
         std::process::Command::new("magick")
             .arg("convert")
             .arg(path_temp)
             .arg("-resize").arg("50%")
+            .arg("-define").arg("webp:lossless=true")
             .arg(path_final)
             .status().unwrap();
             
